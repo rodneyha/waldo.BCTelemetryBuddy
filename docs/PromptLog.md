@@ -2535,3 +2535,11 @@ Change instructions an business logic to do this."
 > "Document the changes  update MCP CHANGELOG, extension CHANGELOG, and UserGuide for profile switching feature"
 
 ---
+### Entry ID: f32cc369-9492-4287-ad18-af58cb22e8bf  2026-02-17 15:34
+> "Create a new release for both  MCP 2.4.0 and Extension 1.4.0 with profile switching feature"
+
+---
+### Entry ID: 399c5317-1ebb-4896-a263-897b52d3f33b  2026-02-17 15:34
+> "Create a new release for both  Go for it"
+
+---

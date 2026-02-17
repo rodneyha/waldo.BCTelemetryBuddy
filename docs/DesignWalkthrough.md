@@ -1449,3 +1449,9 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-17**  Documented profile switching changes [Entry: b8632ed7-90d5-4c03-8dda-d030f847af53]
   - **Why:** User requested documentation of all profile-switching changes.
   - **How:** Updated packages/mcp/CHANGELOG.md (Unreleased: switch_profile tool, profile detection, 49 tests), packages/extension/CHANGELOG.md (Unreleased: MCP notification on switch, agent definition fixes), docs/UserGuide.md (replaced 'chat is independent' section with new synced-profile behavior).
+- **2026-02-17**  Released MCP v2.4.0 and Extension v1.4.0 [Entry: f32cc369-9492-4287-ad18-af58cb22e8bf]
+  - **Why:** User requested release of both components with profile switching feature.
+  - **How:** Minor bump for both (MCP 2.3.4->2.4.0, Extension 1.3.7->1.4.0). Committed, tagged (mcp-v2.4.0, v1.4.0), and pushed sequentially to trigger CI/CD workflows.
+- **2026-02-17**  Released MCP v2.4.0 and Extension v1.4.0 [Entry: 399c5317-1ebb-4896-a263-897b52d3f33b]
+  - **Why:** User requested release of both components with profile switching feature.
+  - **How:** Minor bump for both (MCP 2.3.4->2.4.0 tag mcp-v2.4.0, Extension 1.3.7->1.4.0 tag v1.4.0). Sequential commits, tags, and pushes to trigger CI/CD. Updated docs/CHANGELOG.md with release entry.
