@@ -28,6 +28,7 @@
         "start": "node dist/server.js",
         "pretest": "node scripts/generate-version.js",
         "test": "jest --forceExit",
+        "pretest:coverage": "node scripts/generate-version.js",
         "test:coverage": "jest --coverage --forceExit",
         "test:watch": "jest --watch",
         "clean": "rimraf dist"
