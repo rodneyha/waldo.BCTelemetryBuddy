@@ -80,6 +80,7 @@ export class MCPServer {
     protected sessionId: string; // Session identifier for this server instance
     protected installationId: string; // Installation identifier from workspace
     private isStdioMode: boolean; // Track if running in stdio mode to suppress console output
+    private activeProfileName: string | null = null; // Track the currently active profile name
 
     constructor(config?: MCPConfig, mode?: 'stdio' | 'http') {
         this.app = express();
@@ -178,6 +179,9 @@ export class MCPServer {
                 console.error('ℹ️  Usage Telemetry disabled\n');
             }
         }
+
+        // Determine initial active profile name from config file
+        this.activeProfileName = this.detectInitialProfile();
 
         // Initialize services (pass telemetry to KustoService for dependency tracking)
         this.auth = new AuthService(this.config);
@@ -486,6 +490,25 @@ export class MCPServer {
                                     type: 'object',
                                     properties: {}
                                 }
+                            },
+                            {
+                                name: 'list_profiles',
+                                description: 'List all available telemetry profiles in the workspace configuration. Shows the currently active profile and all other available profiles.',
+                                inputSchema: {
+                                    type: 'object',
+                                    properties: {}
+                                }
+                            },
+                            {
+                                name: 'switch_profile',
+                                description: 'Switch to a different telemetry profile. Reloads configuration with the new profile\'s credentials. Use list_profiles first to see available profiles.',
+                                inputSchema: {
+                                    type: 'object',
+                                    properties: {
+                                        profileName: { type: 'string', description: 'Name of the profile to switch to' }
+                                    },
+                                    required: ['profileName']
+                                }
                             }
                         ]
                     };
@@ -618,6 +641,17 @@ export class MCPServer {
                         rpcRequest.params?.daysBack || 10,
                         rpcRequest.params?.companyNameFilter
                     );
+                    break;
+
+                case 'list_profiles':
+                    result = this.listProfiles();
+                    break;
+
+                case 'switch_profile':
+                    if (!rpcRequest.params?.profileName) {
+                        throw new Error('profileName parameter is required. Use list_profiles to see available profiles.');
+                    }
+                    result = this.switchProfile(rpcRequest.params.profileName);
                     break;
 
                 default:
@@ -1307,6 +1341,123 @@ ${extendStatements}
     }
 
     /**
+     * Detect the initial active profile name from config file
+     */
+    private detectInitialProfile(): string | null {
+        const fs = require('fs');
+        const path = require('path');
+
+        try {
+            const configPath = path.join(this.config.workspacePath, '.bctb-config.json');
+            if (!fs.existsSync(configPath)) {
+                return null;
+            }
+
+            const configData = fs.readFileSync(configPath, 'utf8');
+            const config = JSON.parse(configData);
+
+            if (!config.profiles || Object.keys(config.profiles).length === 0) {
+                return null;
+            }
+
+            // Use BCTB_PROFILE env var (set by loadConfigFromFile), then defaultProfile
+            return process.env.BCTB_PROFILE || config.defaultProfile || 'default';
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Switch to a different profile by re-reading config and reinitializing services
+     */
+    private switchProfile(profileName: string): any {
+        const fs = require('fs');
+        const path = require('path');
+
+        try {
+            const configPath = path.join(this.config.workspacePath, '.bctb-config.json');
+
+            if (!fs.existsSync(configPath)) {
+                return {
+                    success: false,
+                    error: 'No .bctb-config.json found - cannot switch profiles in single-config mode'
+                };
+            }
+
+            const configData = fs.readFileSync(configPath, 'utf8');
+            const config = JSON.parse(configData);
+
+            if (!config.profiles || Object.keys(config.profiles).length === 0) {
+                return {
+                    success: false,
+                    error: 'Config file has no profiles defined - cannot switch profiles'
+                };
+            }
+
+            // Filter out base profiles
+            const availableProfiles = Object.keys(config.profiles).filter(name => !name.startsWith('_'));
+
+            if (!availableProfiles.includes(profileName)) {
+                return {
+                    success: false,
+                    error: `Profile '${profileName}' not found. Available profiles: ${availableProfiles.join(', ')}`
+                };
+            }
+
+            // Load the new profile config using the existing loadConfigFromFile
+            const newConfig = loadConfigFromFile(configPath, profileName, this.isStdioMode);
+            if (!newConfig) {
+                return {
+                    success: false,
+                    error: `Failed to load configuration for profile '${profileName}'`
+                };
+            }
+
+            // Preserve server settings that shouldn't change on profile switch
+            newConfig.port = this.config.port;
+
+            const previousProfile = this.activeProfileName || this.config.connectionName;
+
+            // Update config and reinitialize services
+            this.config = newConfig;
+            this.configErrors = validateConfig(this.config);
+            this.activeProfileName = profileName;
+
+            // Reinitialize services with new config
+            this.auth = new AuthService(this.config);
+            this.kusto = new KustoService(this.config.applicationInsightsAppId, this.config.kustoClusterUrl, this.usageTelemetry);
+            this.cache = new CacheService(this.config.workspacePath, this.config.cacheTTLSeconds, this.config.cacheEnabled);
+            this.queries = new QueriesService(this.config.workspacePath, this.config.queriesFolder);
+            this.references = new ReferencesService(this.config.references, this.cache);
+
+            if (!this.isStdioMode) {
+                console.error(`[Profile] Switched from '${previousProfile}' to '${profileName}'`);
+                console.error(`[Profile] Connection: ${this.config.connectionName}`);
+                console.error(`[Profile] App Insights ID: ${this.config.applicationInsightsAppId || '(not set)'}`);
+            }
+
+            return {
+                success: true,
+                previousProfile,
+                currentProfile: {
+                    name: profileName,
+                    connectionName: this.config.connectionName,
+                    applicationInsightsAppId: this.config.applicationInsightsAppId,
+                    authFlow: this.config.authFlow
+                },
+                message: `Successfully switched to profile '${profileName}' (${this.config.connectionName})`,
+                configValid: this.configErrors.length === 0,
+                configErrors: this.configErrors.length > 0 ? this.configErrors : undefined
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: `Failed to switch profile: ${error.message}`
+            };
+        }
+    }
+
+    /**
      * List all available profiles in the configuration
      * Shows current active profile and all other available profiles
      */
@@ -1350,7 +1501,8 @@ ${extendStatements}
             }
 
             // Multi-profile mode - list all profiles
-            const currentProfileName = process.env.BCTB_CURRENT_PROFILE || config.defaultProfile || 'default';
+            // Use tracked activeProfileName (updated by switch_profile), then env var, then defaultProfile
+            const currentProfileName = this.activeProfileName || process.env.BCTB_PROFILE || config.defaultProfile || 'default';
 
             const profiles = Object.entries(config.profiles)
                 .filter(([name]) => !name.startsWith('_')) // Filter out base profiles
@@ -1377,7 +1529,7 @@ ${extendStatements}
                 message: `Multi-profile configuration with ${profiles.length} profile(s). Currently using: ${currentProfileName}`,
                 usage: {
                     summary: 'This workspace has multiple telemetry profiles configured for different customers/environments',
-                    switchingInstructions: 'To switch profiles, use the status bar in VS Code or the command palette. The MCP server will automatically use the active profile.',
+                    switchingInstructions: 'To switch profiles, use the switch_profile tool with the profile name. In VS Code, you can also use the status bar or command palette.',
                     noteForQueries: 'All queries execute against the currently active profile. Use list_profiles to confirm which profile is active before running queries.'
                 }
             };
@@ -1704,6 +1856,17 @@ ${extendStatements}
                                     type: 'object',
                                     properties: {}
                                 }
+                            },
+                            {
+                                name: 'switch_profile',
+                                description: 'Switch to a different telemetry profile. This reloads the configuration with the new profile\'s credentials and App Insights settings. All subsequent queries will use the new profile. Use list_profiles first to see available profiles.',
+                                inputSchema: {
+                                    type: 'object',
+                                    properties: {
+                                        profileName: { type: 'string', description: 'Name of the profile to switch to (from list_profiles)' }
+                                    },
+                                    required: ['profileName']
+                                }
                             }
                         ]
                     };
@@ -1953,6 +2116,13 @@ ${extendStatements}
 
                 case 'list_profiles':
                     result = this.listProfiles();
+                    break;
+
+                case 'switch_profile':
+                    if (!params?.profileName) {
+                        throw new Error('profileName parameter is required. Use list_profiles to see available profiles.');
+                    }
+                    result = this.switchProfile(params.profileName);
                     break;
 
                 case 'cleanup_cache':

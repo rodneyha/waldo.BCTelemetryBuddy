@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Profile Switching Tool (`switch_profile`)**: MCP server can now switch the active profile at runtime without restart
+  - Re-reads `.bctb-config.json` and reinitializes all services (Auth, Kusto, Cache, Queries, References) for the new profile
+  - Extension notifies MCP server on profile switch, keeping both in sync
+  - `list_profiles` now shows the currently active profile (tracks in-memory state)
+- **Initial Profile Detection**: Server auto-detects the active profile on startup from `BCTB_PROFILE` env var, `defaultProfile` config, or falls back to `'default'`
+
+### Fixed
+- **Profile Switching Bug**: Switching profiles in the VS Code extension now correctly propagates to the MCP server — queries run against the selected profile instead of the startup profile
+- **`list_profiles` Typo**: Fixed agent definition referencing `list_mprofiles` instead of `list_profiles`
+
+### Tests
+- Added 49 comprehensive profile-switching tests covering `detectInitialProfile()`, `switchProfile()`, `listProfiles()`, and lifecycle scenarios (>90% code coverage for profile methods)
+
 ## [2.3.4] - 2026-02-10
 
 ### Fixed

@@ -803,27 +803,27 @@ When you switch profiles via the status bar dropdown or `BC Telemetry Buddy: Swi
 - Status bar queries
 - All direct query execution through the extension
 
-❌ **Does NOT affect Chat Participant:**
-- `@bc-telemetry-buddy` chat participant is **independent**
-- Chat uses MCP tools to detect and select profiles intelligently
-- Chat analyzes your question to determine which profile you're asking about
-- If you mention "CustomerA" in your question, chat uses CustomerA profile regardless of status bar
+✅ **Also affects Chat Participant / MCP Server:**
+- When you switch profiles, the MCP server is notified and switches its active connection
+- `@bc-telemetry-buddy` chat queries will run against the newly selected profile
+- Chat can also use the `switch_profile` tool to switch profiles dynamically based on your question
+- Use `list_profiles` in chat to see all available profiles and which one is active
 
 **Example Scenario:**
 ```
 Extension current profile: CustomerA (via status bar)
-Your chat question: "@bc-telemetry-buddy show me errors for CustomerB"
+You switch to CustomerB via status bar or Switch Profile command
 
 Result:
-- Extension commands (Run KQL Query) use CustomerA credentials
-- Chat detects "CustomerB" in your question and uses CustomerB profile
-- They operate independently
+- Extension commands (Run KQL Query) use CustomerB credentials
+- Chat (@bc-telemetry-buddy) also uses CustomerB credentials
+- Both stay in sync automatically
 ```
 
-**Why is chat independent?**
-- Chat needs to answer questions about any customer dynamically
-- Chat intelligently picks the right profile based on your question
-- Extension commands use a fixed "current profile" for consistency
+**Dynamic profile switching in chat:**
+- Chat can also switch profiles on the fly using the `switch_profile` tool
+- If you ask "show me errors for CustomerB", chat can call `switch_profile` to switch before querying
+- Use `list_profiles` to see all available profiles and the currently active one
 
 **When to switch profiles:**
 - You're switching focus to a different customer/environment

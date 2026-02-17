@@ -1437,3 +1437,15 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-10**  Fixed mcpInstaller test timeout [Entry: 23948862-92b7-45f8-9c52-f1be4f40294b]
   - **Why:** Test timed out because it didn't mock npm config get prefix command and showWarningMessage API
   - **How:** Added showWarningMessage to vscode mock, mocked npm config get prefix command in failed test
+- **2026-02-17**  Fix MCP profile switching  add switch_profile tool [Entry: 80c5526a-5aff-4d97-a590-1e31169b3bdf]
+  - **Why:** Profile switching in VS Code did not propagate to the MCP server; the MCP loaded config once at startup and never reloaded, so queries always ran against the original profile.
+  - **How:** Added switch_profile tool and switchProfile() method to MCP server that re-reads config file and reinitializes all services. Updated listProfiles() to track active profile in memory. Extension now notifies MCP server on profile switch. Added agent instructions for switch_profile workflow. Created 11 new tests.
+- **2026-02-17**  Expanded profile-switching tests to >90% coverage [Entry: aef50a5b-fb57-4ebb-9114-076ae1ec9ef5]
+  - **Why:** User requested +90% code coverage for the new profile switching feature. Original 11 tests only covered config.ts functions; server.ts private methods had 0% coverage.
+  - **How:** Added 38 new tests (49 total) covering detectInitialProfile, switchProfile, listProfiles via mocked MCPServer. Achieved 96.9% statements, 91.2% branches, 100% functions for the profile methods.
+- **2026-02-17**  Ran full test suite verification [Entry: 7329a60e-4bda-4558-9014-5f63372e9eab]
+  - **Why:** User requested a full test run to confirm nothing is broken.
+  - **How:** Ran jest --forceExit for both MCP (242 passed) and extension (337 passed). All 579 tests green.
+- **2026-02-17**  Documented profile switching changes [Entry: b8632ed7-90d5-4c03-8dda-d030f847af53]
+  - **Why:** User requested documentation of all profile-switching changes.
+  - **How:** Updated packages/mcp/CHANGELOG.md (Unreleased: switch_profile tool, profile detection, 49 tests), packages/extension/CHANGELOG.md (Unreleased: MCP notification on switch, agent definition fixes), docs/UserGuide.md (replaced 'chat is independent' section with new synced-profile behavior).

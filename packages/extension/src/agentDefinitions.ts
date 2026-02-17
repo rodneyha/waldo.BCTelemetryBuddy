@@ -102,17 +102,23 @@ Always use these patterns when querying BC telemetry:
      - Enumerates stored workspace queries for reuse & consistency
      - Encourage leveraging existing proven logic before writing new
 
-12. **mcp_bc_telemetry__list_mprofiles**
+12. **mcp_bc_telemetry__list_profiles**
      - For multi‑profile workspaces: discover available telemetry profiles
      - Use BEFORE any mapping or discovery when multiple customers are active
+
+13. **mcp_bc_telemetry__switch_profile**
+     - Switch to a different telemetry profile in a multi‑profile workspace
+     - Reloads credentials and App Insights configuration for the selected profile
+     - All subsequent queries will use the new profile's connection
 
 ## Workflow for Analysis
 
 ### Step 1: Identify the Customer
 When user mentions a company/customer name OR multiple profiles exist:
 \`\`\`
-1. If multi‑profile: call mcp_bc_telemetry__list_mprofiles to confirm target profile
-2. Call mcp_bc_telemetry__get_tenant_mapping with provided company/customer name
+1. If multi‑profile: call mcp_bc_telemetry__list_profiles to see available profiles
+2. If user wants data from a different profile than the active one: call mcp_bc_telemetry__switch_profile to switch
+3. Call mcp_bc_telemetry__get_tenant_mapping with provided company/customer name
 3. Extract aadTenantId for ALL subsequent filtering (do not filter by companyName)
 4. AFTER querying by aadTenantId, map back to company names for display (primary + count of companies)
 5. Display tenant‑level summaries (each row = tenant) not raw company lists unless explicitly requested

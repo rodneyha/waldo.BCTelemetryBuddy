@@ -1576,11 +1576,29 @@ async function switchProfileCommand(): Promise<void> {
         }
 
         const switched = await profileStatusBar.switchProfile();
-        if (switched && telemetryService) {
-            // Reload TelemetryService with new profile
+        if (switched) {
             const currentProfile = profileStatusBar.getCurrentProfile();
             if (currentProfile) {
-                telemetryService.switchProfile(currentProfile);
+                // Reload TelemetryService with new profile
+                if (telemetryService) {
+                    telemetryService.switchProfile(currentProfile);
+                }
+
+                // Notify MCP server (HTTP mode) about profile switch
+                if (mcpClient) {
+                    try {
+                        const result = await mcpClient.request('switch_profile', { profileName: currentProfile });
+                        if (result.result?.success) {
+                            outputChannel.appendLine(`✓ MCP server switched to profile: ${currentProfile} (${result.result.currentProfile?.connectionName || ''})`);
+                        } else {
+                            outputChannel.appendLine(`⚠️ MCP server profile switch failed: ${result.result?.error || result.error || 'unknown error'}`);
+                        }
+                    } catch (mcpErr: any) {
+                        // MCP server might not be running (e.g., only stdio mode) - that's ok
+                        outputChannel.appendLine(`ℹ️ Could not notify HTTP MCP server of profile switch: ${mcpErr.message}`);
+                    }
+                }
+
                 outputChannel.appendLine(`✓ Switched to profile: ${currentProfile}`);
             }
         }

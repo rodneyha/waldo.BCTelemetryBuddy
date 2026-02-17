@@ -2515,3 +2515,23 @@ Change instructions an business logic to do this."
 > "Seems not all tests are working: [GitHub Actions test failure URL]"
 
 ---
+### Entry ID: 089109c6-7538-4d51-927b-1a087158660c  2026-02-17 12:26
+> "list_profiles should show all profiles in a multi-profile situation. But I see when I work with that, that I can't switch to another connection. The profile switch doesn't seem to be registering with the MCP server."
+
+---
+### Entry ID: 80c5526a-5aff-4d97-a590-1e31169b3bdf  2026-02-17 12:26
+> "list_profiles should show all profiles in a multi-profile situation. But I see when I work with that, that I can't switch to another connection. The profile switch doesn't seem to be registering with the MCP server."
+
+---
+### Entry ID: aef50a5b-fb57-4ebb-9114-076ae1ec9ef5  2026-02-17 13:23
+> "Make sure there is +90% code coverage (continuation - expand profile-switching tests to cover server.ts private methods)"
+
+---
+### Entry ID: 7329a60e-4bda-4558-9014-5f63372e9eab  2026-02-17 13:36
+> "Run all tests, see if everything still works"
+
+---
+### Entry ID: b8632ed7-90d5-4c03-8dda-d030f847af53  2026-02-17 13:44
+> "Document the changes  update MCP CHANGELOG, extension CHANGELOG, and UserGuide for profile switching feature"
+
+---

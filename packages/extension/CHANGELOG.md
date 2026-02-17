@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Profile Switching Propagation**: `Switch Profile` command now notifies the MCP server to switch its active connection, ensuring queries run against the correct profile
+- **Agent Definitions**: Fixed `list_mprofiles` typo → `list_profiles`, added `switch_profile` tool documentation with multi-profile workflow steps
+
 ## [1.3.7] - 2026-02-10
 
 ### Fixed
