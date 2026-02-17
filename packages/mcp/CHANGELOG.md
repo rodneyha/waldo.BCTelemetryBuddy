@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-02-17
+
 ### Added
 - **Profile Switching Tool (`switch_profile`)**: MCP server can now switch the active profile at runtime without restart
   - Re-reads `.bctb-config.json` and reinitializes all services (Auth, Kusto, Cache, Queries, References) for the new profile
