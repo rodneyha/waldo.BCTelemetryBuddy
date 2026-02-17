@@ -1,4 +1,4 @@
-import { loadConfigFromFile, validateConfig, MCPConfig } from '../config.js';
+import { loadConfigFromFile, validateConfig, MCPConfig } from '../config';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -24,17 +24,17 @@ jest.mock('@bctb/shared', () => ({
     hashValue: jest.fn(() => 'testhash'),
 }));
 
-jest.mock('../mcpTelemetry.js', () => ({
+jest.mock('../mcpTelemetry', () => ({
     createMCPUsageTelemetry: jest.fn(() => null),
     getMCPInstallationId: jest.fn(() => 'test-installation-id'),
 }));
 
-jest.mock('../version.js', () => ({
+jest.mock('../version', () => ({
     VERSION: '0.0.0-test',
 }));
 
 // Import MCPServer AFTER mocks are set up
-import { MCPServer } from '../server.js';
+import { MCPServer } from '../server';
 
 /**
  * Test profile switching functionality
