@@ -1455,3 +1455,15 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-17**  Released MCP v2.4.0 and Extension v1.4.0 [Entry: 399c5317-1ebb-4896-a263-897b52d3f33b]
   - **Why:** User requested release of both components with profile switching feature.
   - **How:** Minor bump for both (MCP 2.3.4->2.4.0 tag mcp-v2.4.0, Extension 1.3.7->1.4.0 tag v1.4.0). Sequential commits, tags, and pushes to trigger CI/CD. Updated docs/CHANGELOG.md with release entry.
+- **2026-02-17**  Fixed CI test moduleNameMapper resolution [Entry: eecebed2-0a5d-4da0-b6ae-09f2577f88bb]
+  - **Why:** CI failed: jest.mock('../version.js') couldn't be resolved by moduleNameMapper on Linux.
+  - **How:** Removed .js extensions from all import/mock paths in profile-switching.test.ts (../version.js -> ../version, ../mcpTelemetry.js -> ../mcpTelemetry, etc).
+- **2026-02-17**  Retriggered both releases (v1.4.0 + mcp-v2.4.0) [Entry: fadc6e73-c12e-4ed8-b874-b576632cfed9]
+  - **Why:** CI failed on old tags due to moduleNameMapper issue. Need to retrigger on fixed commit.
+  - **How:** Deleted and recreated both tags (v1.4.0, mcp-v2.4.0) pointing to d7b1fe8 (commit with test fix).
+- **2026-02-17**  Pushed extension v1.4.0 tag [Entry: 526f428e-a876-4a07-bab4-d159abe00a48]
+  - **Why:** Previous v1.4.0 tag push failed silently; MCP was already released but extension was not.
+  - **How:** Verified tag missing from remote with git ls-remote, then pushed v1.4.0 tag to trigger CI.
+- **2026-02-17**  Fixed CI: added pretest:coverage to generate version.ts [Entry: 2888a6f9-1204-462e-ae3e-899ce20730a4]
+  - **Why:** npm only runs pretest before 'test', not 'test:coverage'. CI runs test:coverage so version.ts was never generated.
+  - **How:** Added pretest:coverage script to packages/mcp/package.json. Recreated v1.4.0 tag on fixed commit.

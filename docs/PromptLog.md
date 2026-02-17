@@ -2543,3 +2543,19 @@ Change instructions an business logic to do this."
 > "Create a new release for both  Go for it"
 
 ---
+### Entry ID: eecebed2-0a5d-4da0-b6ae-09f2577f88bb  2026-02-17 15:38
+> "Fix failing CI test: jest moduleNameMapper can't resolve ../version.js in profile-switching.test.ts"
+
+---
+### Entry ID: fadc6e73-c12e-4ed8-b874-b576632cfed9  2026-02-17 15:42
+> "Also restart the v1.4.0 release  recreated both tags on latest commit with test fix"
+
+---
+### Entry ID: 526f428e-a876-4a07-bab4-d159abe00a48  2026-02-17 15:43
+> "The MCP was already released, but the extension failed  push v1.4.0 tag to trigger extension release"
+
+---
+### Entry ID: 2888a6f9-1204-462e-ae3e-899ce20730a4  2026-02-17 15:56
+> "Fix CI: version.ts not generated before test:coverage  add pretest:coverage script"
+
+---
