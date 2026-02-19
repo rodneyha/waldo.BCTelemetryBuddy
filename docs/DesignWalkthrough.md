@@ -1488,3 +1488,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-19** — MCP SDK upgrade + chat model fix committed [Entry: 2b4a72e1-7f3a-4301-be9c-3579f5416768]
   - **Why:** Upgrade MCP protocol to 2025-06-18, eliminate triple tool duplication, fix chat participant model selection
   - **How:** Added @modelcontextprotocol/sdk, toolDefinitions.ts, toolHandlers.ts, mcpSdkServer.ts; removed 713 lines dead code; changed chatParticipant to use request.model
+- **2026-02-19** — Major release v3.0.0 (MCP + Extension aligned) [Entry: 16529f9e-a3ec-4209-8cd7-fa3d8da35d23]
+  - **Why:** Align version numbers, mark MCP SDK upgrade as major milestone
+  - **How:** Bumped both to 3.0.0, updated CHANGELOGs, updated ReleaseNotesProvider for MAJOR release page

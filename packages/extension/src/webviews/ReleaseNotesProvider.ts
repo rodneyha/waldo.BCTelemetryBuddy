@@ -207,85 +207,47 @@ export class ReleaseNotesProvider {
         <div class="header">
             <img src="${logoUri}" alt="waldo" class="logo">
             <h1>Note from waldo</h1>
-            <p class="version">BC Telemetry Buddy v1.0.5</p>
+            <p class="version">BC Telemetry Buddy v3.0.0</p>
         </div>
 
         <div class="section">
-            <h2><span class="emoji">🎉</span> Welcome to the New Version!</h2>
-            <p>Thanks for updating BC Telemetry Buddy! This release brings important architectural changes that make the extension more reliable and maintainable.</p>
+            <h2><span class="emoji">🎉</span> Version 3.0.0 — Aligned & Upgraded!</h2>
+            <p>BC Telemetry Buddy v3.0.0 brings a major protocol upgrade and version alignment between the Extension and MCP server. Both are now v3.0.0 — no more version confusion!</p>
         </div>
 
         <div class="section">
-            <h2><span class="emoji">🔄</span> What's New in v1.0.5</h2>
+            <h2><span class="emoji">🔄</span> What's New in v3.0.0</h2>
             
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">🛠️ Build & CI Improvements</h3>
-            <p>This release fixes CI/CD pipeline issues:</p>
+            <h3 style="margin-top: 20px; margin-bottom: 10px;">🚀 MCP Protocol Upgrade (2025-06-18)</h3>
+            <p>The MCP server now uses the <strong>official Model Context Protocol SDK</strong>, bringing full compatibility with the latest MCP specification:</p>
             <ul>
-                <li><strong>Fixed CI Tests</strong>: Updated tests to match current version and command changes</li>
-                <li><strong>Reliable Builds</strong>: Version generation now happens before tests run</li>
-                <li><strong>Complete Release</strong>: All previous fixes (CLI version, update command) now properly released</li>
+                <li><strong>Official SDK</strong>: Adopted <code>@modelcontextprotocol/sdk</code> v1.26.0 — the same SDK used by Anthropic's reference implementations</li>
+                <li><strong>Protocol 2025-06-18</strong>: Latest MCP specification with tool annotations, logging capabilities, and proper capability negotiation</li>
+                <li><strong>Universal Compatibility</strong>: Works with Claude Code, Claude Desktop, Cursor, GitHub Copilot, and all MCP-compliant clients</li>
+                <li><strong>Tool Annotations</strong>: Each tool now declares hints like <code>readOnlyHint</code>, <code>destructiveHint</code>, and <code>openWorldHint</code> — helping AI agents make smarter decisions</li>
             </ul>
 
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">🏗️ Monorepo Architecture</h3>
-            <p>The project has been completely restructured into a modern monorepo with clear separation of concerns:</p>
+            <h3 style="margin-top: 20px; margin-bottom: 10px;">🤖 Smarter Chat Participant</h3>
+            <p>The <code>@bc-telemetry-buddy</code> chat participant is now model-agnostic:</p>
             <ul>
-                <li><strong>Standalone MCP Package</strong>: Published on NPM as <code>bc-telemetry-buddy-mcp</code></li>
-                <li><strong>Independent Extension</strong>: Works standalone for direct KQL queries</li>
-                <li><strong>Shared Library</strong>: Common code between MCP and extension</li>
+                <li><strong>Any Copilot Model</strong>: Works with GPT-4o, Claude, and any future models — no more "No GitHub Copilot model available" errors</li>
+                <li><strong>Automatic Model Detection</strong>: Uses whatever model you're already chatting with</li>
             </ul>
 
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">🎯 Multi-Profile Support</h3>
-            <p>Manage multiple customer environments in a single configuration file:</p>
+            <h3 style="margin-top: 20px; margin-bottom: 10px;">🏗️ Cleaner Architecture</h3>
+            <p>Under the hood, the codebase is significantly cleaner:</p>
             <ul>
-                <li><strong>Profile Switching</strong>: Quick-switch between customers via status bar</li>
-                <li><strong>Profile Inheritance</strong>: DRY configuration using <code>extends</code> key</li>
-                <li><strong>Profile Management</strong>: Create, edit, and delete profiles from UI</li>
+                <li><strong>Single Source of Truth</strong>: All 13 tool definitions in one place — no more triple duplication</li>
+                <li><strong>713 Lines Removed</strong>: Dead hand-rolled JSON-RPC code eliminated</li>
+                <li><strong>Version Alignment</strong>: Extension and MCP now share the same major version number</li>
             </ul>
 
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">🔧 Enhanced Configuration</h3>
-            <p>New file-based configuration system with environment variable support:</p>
-            <ul>
-                <li><strong>Single Config File</strong>: <code>.bctb-config.json</code> as single source of truth</li>
-                <li><strong>Environment Variables</strong>: Use <code>\${VAR_NAME}</code> for secrets</li>
-                <li><strong>Discovery Order</strong>: Workspace → Home directory → Environment variables</li>
-                <li><strong>Backward Compatible</strong>: Old VSCode settings still supported</li>
-            </ul>
-
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">✨ Improved Developer Experience</h3>
-            <p>Better tooling and automation throughout:</p>
-            <ul>
-                <li><strong>Setup Wizard</strong>: Interactive first-run configuration</li>
-                <li><strong>Workspace Validation</strong>: Blocks multi-root workspaces, requires single folder</li>
-                <li><strong>Automatic Migration</strong>: Detects old settings and guides migration</li>
-                <li><strong>Profile Status Bar</strong>: Always know which customer/environment you're querying</li>
-                <li><strong>Better Error Messages</strong>: Clear guidance when configuration is missing</li>
-            </ul>
-
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">🤖 GitHub Copilot Agent</h3>
-            <p>Comprehensive AI-powered BC telemetry analysis:</p>
-            <ul>
-                <li><strong>Chat Participant</strong>: Use <code>@bc-telemetry-buddy</code> in GitHub Copilot Chat for expert telemetry guidance</li>
-                <li><strong>Workspace Agents</strong>: Install 2 specialized chatmodes for BC telemetry and performance analysis</li>
-                <li><strong>MCP Tools Integration</strong>: Automatic access to query execution, event catalogs, tenant mapping, and field discovery</li>
-                <li><strong>Intent Detection</strong>: Distinguishes between guidance requests and data query execution</li>
-                <li><strong>BC Knowledge Base</strong>: 4KB system prompt with KQL patterns, schema, best practices, and 3-step workflow</li>
-            </ul>
-
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">📦 NPM Publication</h3>
-            <p>MCP server is now a proper NPM package:</p>
-            <ul>
-                <li><strong>Global Install</strong>: <code>npm install -g bc-telemetry-buddy-mcp</code></li>
-                <li><strong>CLI Commands</strong>: <code>bctb-mcp start</code>, <code>bctb-mcp init</code>, <code>bctb-mcp validate</code></li>
-                <li><strong>Version Management</strong>: Semantic versioning with independent releases</li>
-            </ul>
-
-            <h3 style="margin-top: 20px; margin-bottom: 10px;">🧪 Comprehensive Testing</h3>
-            <p>Robust test coverage across all components:</p>
-            <ul>
-                <li><strong>95% MCP Coverage</strong>: 213 tests for auth, queries, cache, config</li>
-                <li><strong>73%+ Extension Coverage</strong>: 98 tests for commands, services, UI</li>
-                <li><strong>CI/CD Pipeline</strong>: Automated testing, building, and publishing</li>
-            </ul>
+            <h3 style="margin-top: 20px; margin-bottom: 10px;">📦 Upgrade the MCP Server</h3>
+            <div class="highlight">
+                <p><strong>⚠️ Important:</strong> After updating the extension, also update the MCP server:</p>
+                <p><code>npm install -g bc-telemetry-buddy-mcp@latest</code></p>
+                <p>Or use the Setup Wizard: <code>BC Telemetry Buddy: Setup Wizard</code></p>
+            </div>
         </div>
 
         <div class="section">

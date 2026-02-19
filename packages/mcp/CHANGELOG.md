@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-02-19
+
+### Added
+- **Official MCP SDK Integration**: Adopted `@modelcontextprotocol/sdk` v1.26.0 with protocol version `2025-06-18` — compatible with Claude Code, Claude Desktop, Cursor, GitHub Copilot, and all MCP-compliant clients
+- **Stdio Transport**: SDK-based `StdioServerTransport` replaces hand-rolled JSON-RPC for stdio mode
+- **Tool Definitions Module** (`toolDefinitions.ts`): Single source of truth for all 13 tool definitions with `ToolAnnotations` (readOnlyHint, destructiveHint, idempotentHint, openWorldHint)
+- **Tool Handlers Module** (`toolHandlers.ts`): Extracted reusable business logic class shared by SDK and Express servers
+- **MCP Inspector Test Script** (`scripts/test-inspector.ps1`): Reusable script for local testing with parameterized workspace paths
+
+### Changed
+- **Version Alignment**: MCP and Extension versions now aligned at v3.0.0
+- **Architecture**: Dual-mode server — stdio uses official SDK, HTTP uses Express (unchanged API)
+
+### Removed
+- **Dead Code**: Removed 713 lines of hand-rolled JSON-RPC code (`startStdio`, `handleStdioJSONRPC`, `executeToolCall`)
+- **Triple Tool Duplication**: Eliminated duplicated tool definitions (previously in server.ts, tools/list handler, and tool dispatch)
+
+### Tests
+- Added 9 SDK integration tests (createSdkServer, tool registration, error handling, schema validation)
+- All 251 MCP tests pass
+
 ## [2.4.0] - 2026-02-17
 
 ### Added

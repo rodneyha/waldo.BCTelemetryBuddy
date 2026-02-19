@@ -2595,3 +2595,7 @@ Change instructions an business logic to do this."
 > "Commit MCP SDK upgrade (Issue #70) + chat model fix"
 
 ---
+### Entry ID: 16529f9e-a3ec-4209-8cd7-fa3d8da35d23 — 2026-02-19 18:34
+> "Release both MCP and Extension as v3.0.0 major release with version alignment"
+
+---

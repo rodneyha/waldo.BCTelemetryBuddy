@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-02-19
+
+### Changed
+- **Version Alignment**: Extension and MCP versions now aligned at v3.0.0
+- **Chat Model Selection**: Chat participant now uses `request.model` (the model the user is already chatting with) instead of hardcoded `gpt-4` family — works with GPT-4o, Claude, and any future Copilot models
+
+### Fixed
+- **Chat Participant Model Error**: Fixed "No GitHub Copilot model available" error that occurred when the user's Copilot was using a model other than `gpt-4` (e.g., `gpt-4o`)
+
 ## [1.4.1] - 2026-02-19
 
 ### Changed
