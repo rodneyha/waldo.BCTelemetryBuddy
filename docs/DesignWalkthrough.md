@@ -1467,3 +1467,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-17**  Fixed CI: added pretest:coverage to generate version.ts [Entry: 2888a6f9-1204-462e-ae3e-899ce20730a4]
   - **Why:** npm only runs pretest before 'test', not 'test:coverage'. CI runs test:coverage so version.ts was never generated.
   - **How:** Added pretest:coverage script to packages/mcp/package.json. Recreated v1.4.0 tag on fixed commit.
+- **2026-02-19** — Created 25 GitHub issues for brainstormed features [Entry: 202fa726-1016-4cc0-b961-30a9136cf0c8]
+  - **Why:** Document all planned features as trackable GitHub issues across 7 themes (tech modernization, chat participant, MCP resources/prompts/sampling/elicitation/apps).
+  - **How:** Used `gh issue create` CLI commands to create issues #70-#94 with 8 custom labels, detailed descriptions, prerequisites, and references.
