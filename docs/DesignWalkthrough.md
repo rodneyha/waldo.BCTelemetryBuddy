@@ -1470,3 +1470,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-19** — Created 25 GitHub issues for brainstormed features [Entry: 202fa726-1016-4cc0-b961-30a9136cf0c8]
   - **Why:** Document all planned features as trackable GitHub issues across 7 themes (tech modernization, chat participant, MCP resources/prompts/sampling/elicitation/apps).
   - **How:** Used `gh issue create` CLI commands to create issues #70-#94 with 8 custom labels, detailed descriptions, prerequisites, and references.
+- **2026-02-19** - Bump engines.vscode from ^1.85.0 to ^1.96.0 (Issue #72) [Entry: fe19bbd2-53ff-42d8-a8ab-93fd28e35430]
+  - **Why:** Align declared minimum VS Code version with APIs actually used: Chat Participants (1.93), Language Model Tools (1.95), MCP Server Definition Provider (1.96).
+  - **How:** Updated engines.vscode and @types/vscode in package.json, regenerated lockfiles, updated UserGuide, bug-report template, pinned integration test runner to 1.96.0, added CI comment, updated extension CHANGELOG.

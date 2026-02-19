@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-02-19
+
+### Changed
+- **Minimum VS Code Version**: Bumped `engines.vscode` from `^1.85.0` to `^1.96.0` to align with APIs actually used (Chat Participants 1.93, Language Model Tools 1.95, MCP Server Definition Provider 1.96)
+- **@types/vscode**: Updated declared minimum from `^1.85.0` to `^1.96.0` to match engine constraint
+- **Integration Tests**: Pinned `@vscode/test-electron` to run against VS Code 1.96.0 (minimum supported version) to catch accidental use of newer APIs
+
 ## [1.4.0] - 2026-02-17
 
 ### Fixed

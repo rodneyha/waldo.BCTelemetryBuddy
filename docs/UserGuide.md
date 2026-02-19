@@ -91,7 +91,7 @@ BC Telemetry Buddy is a VSCode extension that makes it easy to query and analyze
 Before installing BC Telemetry Buddy, ensure you have:
 
 ### Required
-- **Visual Studio Code** 1.85.0 or later
+- **Visual Studio Code** 1.96.0 or later
 - **Node.js** 18.0.0 or later
 - **npm** 9.0.0 or later
 - **Azure Application Insights** access for your Business Central environment

@@ -2563,3 +2563,11 @@ Change instructions an business logic to do this."
 > "Continue creating remaining 25 GitHub issues for brainstormed features (tech modernization, chat participant, MCP resources, prompts, sampling, elicitation, apps)"
 
 ---
+### Entry ID: 63510b4b-49fa-456d-8f80-e96d5159ba83 — 2026-02-19 15:26
+> "Solve GitHub issue #72: Bump engines.vscode from ^1.85.0 to ^1.93.0+ — chose ^1.96.0 to cover all APIs used (Chat Participants, LM Tools, MCP Server Definition Provider)"
+
+---
+### Entry ID: fe19bbd2-53ff-42d8-a8ab-93fd28e35430 - 2026-02-19 15:26
+> "Solve GitHub issue #72: Bump engines.vscode from ^1.85.0 to ^1.93.0+ - chose ^1.96.0 to cover all APIs used (Chat Participants, LM Tools, MCP Server Definition Provider)"
+
+---

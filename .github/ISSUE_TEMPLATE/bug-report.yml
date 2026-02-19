@@ -74,7 +74,7 @@ body:
     attributes:
       label: VSCode Version
       description: Help → About → Version
-      placeholder: "1.85.0"
+      placeholder: "1.96.0"
     validations:
       required: true
 

@@ -10,7 +10,9 @@ async function main() {
         const extensionTestsPath = path.resolve(__dirname, './suite/index');
 
         // Download VS Code, unzip it and run the integration test
+        // Pin to minimum supported version to catch accidental use of newer APIs
         await runTests({
+            version: '1.96.0',
             extensionDevelopmentPath,
             extensionTestsPath,
             launchArgs: [
