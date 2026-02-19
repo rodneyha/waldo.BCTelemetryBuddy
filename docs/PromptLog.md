@@ -2571,3 +2571,7 @@ Change instructions an business logic to do this."
 > "Solve GitHub issue #72: Bump engines.vscode from ^1.85.0 to ^1.93.0+ - chose ^1.96.0 to cover all APIs used (Chat Participants, LM Tools, MCP Server Definition Provider)"
 
 ---
+### Entry ID: b1462ac9-ef55-44c4-be60-0f4a0f7de2f9 - 2026-02-19 15:42
+> "Release extension v1.4.1 with engines.vscode bump to ^1.96.0 (issue #72) and document on GitHub issue"
+
+---

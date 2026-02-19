@@ -1473,3 +1473,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-19** - Bump engines.vscode from ^1.85.0 to ^1.96.0 (Issue #72) [Entry: fe19bbd2-53ff-42d8-a8ab-93fd28e35430]
   - **Why:** Align declared minimum VS Code version with APIs actually used: Chat Participants (1.93), Language Model Tools (1.95), MCP Server Definition Provider (1.96).
   - **How:** Updated engines.vscode and @types/vscode in package.json, regenerated lockfiles, updated UserGuide, bug-report template, pinned integration test runner to 1.96.0, added CI comment, updated extension CHANGELOG.
+- **2026-02-19** - Release extension v1.4.1 (Issue #72) [Entry: b1462ac9-ef55-44c4-be60-0f4a0f7de2f9]
+  - **Why:** Ship the engines.vscode bump from ^1.85.0 to ^1.96.0 and close issue #72.
+  - **How:** Bumped version to 1.4.1, updated CHANGELOG, committed, tagged v1.4.1, pushed to trigger CI/CD, commented and closed GitHub issue #72.
