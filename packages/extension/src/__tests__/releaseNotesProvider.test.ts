@@ -134,7 +134,7 @@ describe('ReleaseNotesProvider', () => {
             ReleaseNotesProvider.createOrShow(mockExtensionUri, true);
 
             const html = mockPanel.webview.html;
-            expect(html).toContain('v1.0.5');
+            expect(html).toContain('v3.0.0');
             expect(html).toContain('BC Telemetry Buddy');
         });
 
@@ -142,13 +142,10 @@ describe('ReleaseNotesProvider', () => {
             ReleaseNotesProvider.createOrShow(mockExtensionUri, true);
 
             const html = mockPanel.webview.html;
-            expect(html).toContain('Monorepo Architecture');
-            expect(html).toContain('Multi-Profile Support');
-            expect(html).toContain('Enhanced Configuration');
-            expect(html).toContain('Improved Developer Experience');
-            expect(html).toContain('GitHub Copilot Agent');
-            expect(html).toContain('NPM Publication');
-            expect(html).toContain('Comprehensive Testing');
+            expect(html).toContain('MCP Protocol Upgrade');
+            expect(html).toContain('Smarter Chat Participant');
+            expect(html).toContain('Cleaner Architecture');
+            expect(html).toContain('Upgrade the MCP Server');
         });
 
         it('should include resources section', () => {
