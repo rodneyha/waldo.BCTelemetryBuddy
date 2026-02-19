@@ -1497,3 +1497,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-19** — Add coverage tests for toolHandlers + mcpSdkServer [Entry: 6dfff559-8afc-485a-93e0-f598d935658f]
   - **Why:** CI failed because new extracted files (toolHandlers.ts at 10%, mcpSdkServer.ts at 54%) dragged global coverage below 70% threshold
   - **How:** Created toolHandlers.test.ts (70 tests covering dispatch, business logic, helpers) and expanded mcp-sdk-server.test.ts (Zod conversion, annotations, toolDefinitions helpers). Coverage now 76%/70%/84%/76%.
+- **2026-02-19** - Display MCP server version on startup [Entry: 6264cdd3-67d1-4f30-96b6-a8c41d1caf39]
+  - **Why:** Users should see which version of the MCP server is running when it starts up, for diagnostics and troubleshooting.
+  - **How:** Added VERSION to startup log in both HTTP mode (server.ts startHTTP) and stdio mode (mcpSdkServer.ts startSdkStdioServer). HTTP shows 'MCP Server vX.Y.Z listening on port N', stdio shows 'BC Telemetry Buddy MCP Server vX.Y.Z starting (stdio mode)...'.

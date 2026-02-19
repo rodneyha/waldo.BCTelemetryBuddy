@@ -1443,7 +1443,7 @@ ${extendStatements}
         const port = this.config.port;
 
         this.app.listen(port, () => {
-            console.error(`\n✓ MCP Server listening on port ${port}`);
+            console.error(`\n✓ MCP Server v${VERSION} listening on port ${port}`);
             console.error(`Ready to receive requests\n`);
         });
 

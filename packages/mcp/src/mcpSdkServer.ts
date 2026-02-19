@@ -175,6 +175,8 @@ export async function startSdkStdioServer(config?: MCPConfig): Promise<void> {
         process.stderr.write('[MCP] ' + args.join(' ') + '\n');
     };
 
+    console.error(`BC Telemetry Buddy MCP Server v${VERSION} starting (stdio mode)...`);
+
     // Load configuration
     let resolvedConfig: MCPConfig;
     if (config) {

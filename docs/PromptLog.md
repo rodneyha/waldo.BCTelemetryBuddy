@@ -2607,3 +2607,7 @@ Change instructions an business logic to do this."
 > "Fix CI coverage threshold failure: add comprehensive tests for toolHandlers.ts and mcpSdkServer.ts, bringing coverage from 33% to 76% (above 70% threshold)"
 
 ---
+### Entry ID: 6264cdd3-67d1-4f30-96b6-a8c41d1caf39 - 2026-02-19 22:34
+> "When the MCP server is started - make sure the version of the MCP Server is showed in the output/verbose/whatever..."
+
+---
