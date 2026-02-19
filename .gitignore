@@ -18,6 +18,9 @@ packages/shared/src/telemetryConfig.generated.ts
 # Copied MCP bundle (created during extension packaging, not committed)
 packages/extension/mcp/
 
+# MCP cache artifacts
+packages/mcp/.cache/
+
 # Test coverage
 coverage/
 .nyc_output/

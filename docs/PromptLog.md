@@ -2575,3 +2575,23 @@ Change instructions an business logic to do this."
 > "Release extension v1.4.1 with engines.vscode bump to ^1.96.0 (issue #72) and document on GitHub issue"
 
 ---
+### Entry ID: e1be1f72-a542-460f-bbd5-a44420b18b48 — 2026-02-19 17:04
+> "Continue implementation of MCP SDK migration (Issue #70) - recreate mcp-sdk-server.test.ts with proper mock isolation, verify all 588 tests pass"
+
+---
+### Entry ID: 16a8a064-7032-4a24-9f9d-aa9b24f0bfae — 2026-02-19 17:04
+> "Continue implementation of MCP SDK migration (Issue #70) - recreate mcp-sdk-server.test.ts with proper mock isolation, verify all 588 tests pass"
+
+---
+### Entry ID: 8e281d4c-6666-4a50-bce3-a9249af99ae8 — 2026-02-19 17:12
+> "Verify MCP architecture separation (independent server, upgrade path, VS Code KQL isolation), then do remaining cleanup work: remove dead stdio code, replace inline tools/list, update README"
+
+---
+### Entry ID: 527b1f2b-6a74-4d3c-b0f3-c5a1cbc8bc06 — 2026-02-19 17:32
+> "Inspector tests are ok! Can you save the script to start these tests for later usage?"
+
+---
+### Entry ID: 2b4a72e1-7f3a-4301-be9c-3579f5416768 — 2026-02-19 17:57
+> "Commit MCP SDK upgrade (Issue #70) + chat model fix"
+
+---

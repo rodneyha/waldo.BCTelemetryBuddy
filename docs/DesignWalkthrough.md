@@ -1476,3 +1476,15 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-19** - Release extension v1.4.1 (Issue #72) [Entry: b1462ac9-ef55-44c4-be60-0f4a0f7de2f9]
   - **Why:** Ship the engines.vscode bump from ^1.85.0 to ^1.96.0 and close issue #72.
   - **How:** Bumped version to 1.4.1, updated CHANGELOG, committed, tagged v1.4.1, pushed to trigger CI/CD, commented and closed GitHub issue #72.
+- **2026-02-19** — Recreated SDK integration tests with proper mock isolation [Entry: 16a8a064-7032-4a24-9f9d-aa9b24f0bfae]
+  - **Why:** Previous test file had mock isolation issues (McpServer called 3x, undefined error text). Needed beforeEach(clearAllMocks) and per-test service factories.
+  - **How:** Recreated mcp-sdk-server.test.ts with createMockServices(overrides) helper, beforeEach mock cleanup, and dedicated service instances per test. All 588 tests pass (251 MCP + 337 extension).
+- **2026-02-19** — Dead code cleanup and architecture docs [Entry: 8e281d4c-6666-4a50-bce3-a9249af99ae8]
+  - **Why:** After SDK integration, server.ts still contained 713 lines of dead stdio code (startStdio, handleStdioJSONRPC, executeToolCall) and triplicated tool definitions. Also needed architecture verification and README update.
+  - **How:** Removed dead methods from server.ts (2298→1585 lines). Replaced inline tools/list in HTTP handleJSONRPC with TOOL_DEFINITIONS import. Added TOOL_DEFINITIONS import. Updated README architecture section with SDK details, new module descriptions, dual data flow (stdio/HTTP). All 251 MCP + 337 extension tests pass.
+- **2026-02-19** — Created MCP Inspector test script [Entry: 527b1f2b-6a74-4d3c-b0f3-c5a1cbc8bc06]
+  - **Why:** Inspector local tests passed; user wants reusable script for future testing.
+  - **How:** Created scripts/test-inspector.ps1 with auto-config reading, Azure CLI validation, port cleanup, build step, and parameterized workspace path.
+- **2026-02-19** — MCP SDK upgrade + chat model fix committed [Entry: 2b4a72e1-7f3a-4301-be9c-3579f5416768]
+  - **Why:** Upgrade MCP protocol to 2025-06-18, eliminate triple tool duplication, fix chat participant model selection
+  - **How:** Added @modelcontextprotocol/sdk, toolDefinitions.ts, toolHandlers.ts, mcpSdkServer.ts; removed 713 lines dead code; changed chatParticipant to use request.model

@@ -61,23 +61,34 @@ describe('MCP Server stdio mode logging', () => {
     });
 
     test('startServer() includes console redirection for stdio mode', () => {
-        // Verify that startServer() function has console redirection logic
+        // Verify that stdio mode has console redirection logic.
+        // Console redirection now lives in mcpSdkServer.ts (SDK-based stdio server)
+        // and server.ts routes stdio mode to the SDK server via startSdkStdioServer().
 
         const serverSource = fs.readFileSync(
             path.join(__dirname, '../server.ts'),
             'utf-8'
         );
 
-        // Check for stdio mode detection
+        // Check for stdio mode detection in server.ts
         expect(serverSource).toContain('isStdioMode');
         expect(serverSource).toContain('!process.stdin.isTTY');
 
+        // Check that stdio mode routes to SDK server
+        expect(serverSource).toContain('startSdkStdioServer');
+
+        // Verify console redirection exists in mcpSdkServer.ts
+        const sdkServerSource = fs.readFileSync(
+            path.join(__dirname, '../mcpSdkServer.ts'),
+            'utf-8'
+        );
+
         // Check for console.log redirection
-        expect(serverSource).toContain('console.log = (');
-        expect(serverSource).toContain('process.stderr.write');
+        expect(sdkServerSource).toContain('console.log = (');
+        expect(sdkServerSource).toContain('process.stderr.write');
 
         // Check for console.error redirection
-        expect(serverSource).toContain('console.error = (');
+        expect(sdkServerSource).toContain('console.error = (');
     });
 
     test('CLI commands can use console.log for user output', () => {

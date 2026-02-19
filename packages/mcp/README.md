@@ -7,11 +7,11 @@
 
 ## Overview
 
-BC Telemetry Buddy MCP Server is a **standalone NPM package** that enables AI assistants (GitHub Copilot, Claude Desktop, Copilot Studio) to query Business Central telemetry data. It implements the [Model Context Protocol](https://modelcontextprotocol.io/) specification for seamless language model integration.
+BC Telemetry Buddy MCP Server is a **standalone NPM package** that enables AI assistants (GitHub Copilot, Claude Desktop, Claude Code, Copilot Studio, Cursor) to query Business Central telemetry data. It implements the [Model Context Protocol](https://modelcontextprotocol.io/) specification (protocol version **2025-06-18**) using the official `@modelcontextprotocol/sdk` for seamless language model integration.
 
 **Key Features:**
 - 🚀 **Standalone Package**: Install globally with `npm install -g bc-telemetry-buddy-mcp` - no dependencies on VSCode extension
-- 🤖 **AI Assistant Ready**: Works with GitHub Copilot, Claude Desktop, and Copilot Studio via JSON-RPC 2.0 over stdio
+- 🤖 **AI Assistant Ready**: Works with GitHub Copilot, Claude Desktop, Claude Code, Copilot Studio, and Cursor via the official MCP SDK over stdio
 - 🔧 **CLI Interface**: `bctb-mcp` command with init, validate, test-auth, and start subcommands
 - 📁 **File-Based Config**: Simple `.bctb-config.json` with schema validation and environment variable substitution
 - 👥 **Multi-Profile Support**: Manage multiple customers/environments in single config file with profile switching
@@ -569,9 +569,24 @@ The MCP server uses `@bctb/shared` for core functionality (auth, kusto, cache, q
 - Commands: `start`, `init`, `validate`, `test-auth`
 - Config file management and validation
 
-**`server.ts`** - MCP server implementation  
-- JSON-RPC 2.0 protocol over stdio
-- Tool registration and request handling
+**`mcpSdkServer.ts`** - MCP SDK server for stdio mode (primary)
+- Uses official `@modelcontextprotocol/sdk` (protocol 2025-06-18)
+- `StdioServerTransport` for JSON-RPC 2.0 over stdin/stdout
+- Capabilities: `tools` (with `listChanged`), `logging`
+- Automatic Zod schema conversion from JSON Schema tool definitions
+
+**`tools/toolDefinitions.ts`** - Single source of truth for all tool metadata
+- 13 tool definitions with descriptions, input schemas, and annotations
+- Tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`)
+
+**`tools/toolHandlers.ts`** - Business logic for all tools
+- `ToolHandlers` class with extracted business logic
+- `initializeServices()` for dependency setup
+- Shared between SDK stdio server and Express HTTP server
+
+**`server.ts`** - Express HTTP server (legacy, for VS Code extension)
+- HTTP JSON-RPC for VS Code Command Palette features
+- Routes stdio mode → `mcpSdkServer.ts`, HTTP mode → Express
 - Error handling and logging
 
 **`config.ts`** - Configuration management
@@ -591,13 +606,18 @@ The MCP server uses `@bctb/shared` for core functionality (auth, kusto, cache, q
 
 ### Data Flow
 
-1. **Startup**: CLI parses arguments → loads config → validates → starts server
-2. **Tool Request**: AI assistant calls MCP tool via JSON-RPC
-3. **Authentication**: Server acquires Azure token via configured auth flow
-4. **Discovery** (optional): Browse event catalog/schemas to understand available data
-5. **Execution**: Execute KQL query against Application Insights
-6. **Caching**: Store results with TTL for performance
-7. **Response**: Return formatted results to AI assistant
+**Stdio mode (MCP clients — Claude Desktop, Claude Code, Copilot, Cursor):**
+1. **Startup**: CLI → `startSdkStdioServer()` → loads config → validates → creates `ToolHandlers`
+2. **SDK Server**: `McpServer` registers all tools with Zod schemas via `TOOL_DEFINITIONS`
+3. **Transport**: `StdioServerTransport` handles JSON-RPC 2.0 framing over stdin/stdout
+4. **Tool Request**: MCP client calls tool → SDK dispatches → `ToolHandlers.executeToolCall()`
+5. **Execution**: Authentication → KQL query → cache → response
+
+**HTTP mode (VS Code extension Command Palette):**
+1. **Startup**: CLI → `new MCPServer(config, 'http')` → Express server on configured port
+2. **Tool Request**: Extension sends JSON-RPC via HTTP POST to `/rpc`
+3. **Execution**: Same business logic methods on MCPServer class
+4. **Response**: JSON-RPC response over HTTP
 
 ## Publishing
 

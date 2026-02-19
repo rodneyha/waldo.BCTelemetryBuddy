@@ -482,18 +482,8 @@ Now, let me help with your question...\n\n---\n\n`);
             // Add current request LAST (so it's the most recent in conversation)
             messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
 
-            // Get language model
-            const models = await vscode.lm.selectChatModels({
-                vendor: 'copilot',
-                family: 'gpt-4'
-            });
-
-            if (models.length === 0) {
-                stream.markdown('⚠️ No GitHub Copilot model available. Please ensure GitHub Copilot is enabled.');
-                return;
-            }
-
-            const model = models[0];
+            // Use the model already selected in the chat (whatever the user is chatting with)
+            const model = request.model;
             outputChannel.appendLine(`[@${PARTICIPANT_ID}] Using model: ${model.name} (${model.id})`);
 
             // Get available tools registered by this extension

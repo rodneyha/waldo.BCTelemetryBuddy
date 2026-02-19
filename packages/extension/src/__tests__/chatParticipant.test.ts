@@ -136,12 +136,21 @@ describe('Chat Participant', () => {
             registerChatParticipant(mockContext, mockOutputChannel);
             handler = createdParticipant.handler;
 
-            // Mock request
+            // Mock request with model (request.model is the model the user is chatting with)
             mockRequest = {
                 prompt: 'Show me all errors from the last 24 hours',
                 command: undefined,
                 references: [],
-                toolReferences: []
+                toolReferences: [],
+                model: {
+                    id: 'gpt-4o',
+                    name: 'GPT-4o',
+                    sendRequest: jest.fn().mockResolvedValue({
+                        stream: (async function* () {
+                            yield new (vscode.LanguageModelTextPart as any)('Default response');
+                        })()
+                    })
+                }
             };
 
             // Mock chat context
@@ -164,9 +173,6 @@ describe('Chat Participant', () => {
         });
 
         it('should log user query', async () => {
-            // Mock no language model available
-            (vscode.lm.selectChatModels as jest.Mock).mockResolvedValue([]);
-
             await handler(mockRequest, mockChatContext, mockStream, mockToken);
 
             expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
@@ -174,20 +180,10 @@ describe('Chat Participant', () => {
             );
         });
 
-        it('should warn if no Copilot model available', async () => {
-            (vscode.lm.selectChatModels as jest.Mock).mockResolvedValue([]);
-
-            await handler(mockRequest, mockChatContext, mockStream, mockToken);
-
-            expect(mockStream.markdown).toHaveBeenCalledWith(
-                expect.stringContaining('No GitHub Copilot model available')
-            );
-        });
-
         it('should call language model with system prompt and user query', async () => {
             const mockModel = {
-                id: 'gpt-4',
-                name: 'GPT-4',
+                id: 'gpt-4o',
+                name: 'GPT-4o',
                 sendRequest: jest.fn().mockResolvedValue({
                     stream: (async function* () {
                         yield new (vscode.LanguageModelTextPart as any)('Test response');
@@ -195,7 +191,7 @@ describe('Chat Participant', () => {
                 })
             };
 
-            (vscode.lm.selectChatModels as jest.Mock).mockResolvedValue([mockModel]);
+            mockRequest.model = mockModel;
 
             await handler(mockRequest, mockChatContext, mockStream, mockToken);
 
@@ -213,8 +209,8 @@ describe('Chat Participant', () => {
 
         it('should stream response fragments', async () => {
             const mockModel = {
-                id: 'gpt-4',
-                name: 'GPT-4',
+                id: 'gpt-4o',
+                name: 'GPT-4o',
                 sendRequest: jest.fn().mockResolvedValue({
                     stream: (async function* () {
                         yield new (vscode.LanguageModelTextPart as any)('Fragment 1 ');
@@ -223,7 +219,7 @@ describe('Chat Participant', () => {
                 })
             };
 
-            (vscode.lm.selectChatModels as jest.Mock).mockResolvedValue([mockModel]);
+            mockRequest.model = mockModel;
 
             await handler(mockRequest, mockChatContext, mockStream, mockToken);
 
@@ -233,8 +229,8 @@ describe('Chat Participant', () => {
 
         it('should include chat history in messages', async () => {
             const mockModel = {
-                id: 'gpt-4',
-                name: 'GPT-4',
+                id: 'gpt-4o',
+                name: 'GPT-4o',
                 sendRequest: jest.fn().mockResolvedValue({
                     stream: (async function* () {
                         yield new (vscode.LanguageModelTextPart as any)('Response');
@@ -242,7 +238,7 @@ describe('Chat Participant', () => {
                 })
             };
 
-            (vscode.lm.selectChatModels as jest.Mock).mockResolvedValue([mockModel]);
+            mockRequest.model = mockModel;
 
             // Add history
             mockChatContext.history = [
@@ -266,7 +262,7 @@ describe('Chat Participant', () => {
 
         it('should handle errors gracefully', async () => {
             const error = new Error('Test error');
-            (vscode.lm.selectChatModels as jest.Mock).mockRejectedValue(error);
+            mockRequest.model.sendRequest = jest.fn().mockRejectedValue(error);
 
             await handler(mockRequest, mockChatContext, mockStream, mockToken);
 
@@ -279,18 +275,6 @@ describe('Chat Participant', () => {
         });
 
         it('should log completion with iteration count', async () => {
-            const mockModel = {
-                id: 'gpt-4',
-                name: 'GPT-4',
-                sendRequest: jest.fn().mockResolvedValue({
-                    stream: (async function* () {
-                        yield new (vscode.LanguageModelTextPart as any)('Response');
-                    })()
-                })
-            };
-
-            (vscode.lm.selectChatModels as jest.Mock).mockResolvedValue([mockModel]);
-
             await handler(mockRequest, mockChatContext, mockStream, mockToken);
 
             expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(
