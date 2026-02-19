@@ -1491,3 +1491,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-19** — Major release v3.0.0 (MCP + Extension aligned) [Entry: 16529f9e-a3ec-4209-8cd7-fa3d8da35d23]
   - **Why:** Align version numbers, mark MCP SDK upgrade as major milestone
   - **How:** Bumped both to 3.0.0, updated CHANGELOGs, updated ReleaseNotesProvider for MAJOR release page
+- **2026-02-19** — Fix CI: root lock file + release notes tests [Entry: 32d4f562-8696-47ad-8b9d-ce34dc751ae5]
+  - **Why:** All 4 CI workflows failed because root package-lock.json was stale (missing SDK transitive deps) and releaseNotesProvider tests expected old v1.0.5 content
+  - **How:** Ran npm install --package-lock-only to regenerate root lock file (+863 lines), updated test assertions for v3.0.0 content, moved tags to new commit c112c44

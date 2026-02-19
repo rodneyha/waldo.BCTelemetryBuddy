@@ -2599,3 +2599,7 @@ Change instructions an business logic to do this."
 > "Release both MCP and Extension as v3.0.0 major release with version alignment"
 
 ---
+### Entry ID: 32d4f562-8696-47ad-8b9d-ce34dc751ae5 — 2026-02-19 19:16
+> "Fix CI failures: regenerate root package-lock.json with SDK transitive deps, update releaseNotesProvider tests for v3.0.0 content, move tags to fix commit"
+
+---

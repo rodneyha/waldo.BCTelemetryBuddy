@@ -97,7 +97,7 @@ jest.mock('../version.js', () => ({
     VERSION: '2.4.0-test'
 }));
 
-import { TOOL_DEFINITIONS } from '../tools/toolDefinitions.js';
+import { TOOL_DEFINITIONS, getToolDefinition, getToolNames } from '../tools/toolDefinitions.js';
 
 const mockConfig = {
     workspacePath: '/tmp/test',
@@ -313,6 +313,144 @@ describe('MCP SDK Server', () => {
             // Check capabilities declaration
             expect(source).toContain('listChanged: true');
             expect(source).toContain("logging: {}");
+        });
+    });
+
+    describe('Zod schema conversion coverage', () => {
+        test('createSdkServer handles tools with array string properties', async () => {
+            const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+            const { createSdkServer } = require('../mcpSdkServer.js');
+            const { ToolHandlers } = require('../tools/toolHandlers.js');
+
+            const handlers = new ToolHandlers(mockConfig, createMockServices(), true, []);
+            createSdkServer(handlers);
+
+            // search_queries has required array<string> (searchTerms)
+            const mockInstance = McpServer.mock.results[0].value;
+            const searchQueryCall = mockInstance.registerTool.mock.calls.find(
+                (call: any[]) => call[0] === 'search_queries'
+            );
+            expect(searchQueryCall).toBeDefined();
+            // The Zod shape should have been built without errors
+            expect(searchQueryCall[1]).toHaveProperty('description');
+        });
+
+        test('createSdkServer handles tools with enum properties', async () => {
+            const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+            const { createSdkServer } = require('../mcpSdkServer.js');
+            const { ToolHandlers } = require('../tools/toolHandlers.js');
+
+            const handlers = new ToolHandlers(mockConfig, createMockServices(), true, []);
+            createSdkServer(handlers);
+
+            // get_event_catalog has enum 'status' property
+            const mockInstance = McpServer.mock.results[0].value;
+            const catalogCall = mockInstance.registerTool.mock.calls.find(
+                (call: any[]) => call[0] === 'get_event_catalog'
+            );
+            expect(catalogCall).toBeDefined();
+        });
+
+        test('createSdkServer handles tools with object properties', async () => {
+            const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+            const { createSdkServer } = require('../mcpSdkServer.js');
+            const { ToolHandlers } = require('../tools/toolHandlers.js');
+
+            const handlers = new ToolHandlers(mockConfig, createMockServices(), true, []);
+            createSdkServer(handlers);
+
+            // get_recommendations has 'results' object property
+            const mockInstance = McpServer.mock.results[0].value;
+            const recCall = mockInstance.registerTool.mock.calls.find(
+                (call: any[]) => call[0] === 'get_recommendations'
+            );
+            expect(recCall).toBeDefined();
+        });
+
+        test('createSdkServer handles tool with required string properties', async () => {
+            const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+            const { createSdkServer } = require('../mcpSdkServer.js');
+            const { ToolHandlers } = require('../tools/toolHandlers.js');
+
+            const handlers = new ToolHandlers(mockConfig, createMockServices(), true, []);
+            createSdkServer(handlers);
+
+            // save_query has required 'name' and 'kql' string properties
+            const mockInstance = McpServer.mock.results[0].value;
+            const saveCall = mockInstance.registerTool.mock.calls.find(
+                (call: any[]) => call[0] === 'save_query'
+            );
+            expect(saveCall).toBeDefined();
+        });
+
+        test('createSdkServer passes annotations for tools', async () => {
+            const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+            const { createSdkServer } = require('../mcpSdkServer.js');
+            const { ToolHandlers } = require('../tools/toolHandlers.js');
+
+            const handlers = new ToolHandlers(mockConfig, createMockServices(), true, []);
+            createSdkServer(handlers);
+
+            const mockInstance = McpServer.mock.results[0].value;
+            const catalogCall = mockInstance.registerTool.mock.calls.find(
+                (call: any[]) => call[0] === 'get_event_catalog'
+            );
+
+            // Check annotations are passed
+            expect(catalogCall[1]).toHaveProperty('annotations');
+            expect(catalogCall[1].annotations).toHaveProperty('readOnlyHint', true);
+        });
+
+        test('tool callback returns string result directly', async () => {
+            const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+            const { createSdkServer } = require('../mcpSdkServer.js');
+            const { ToolHandlers } = require('../tools/toolHandlers.js');
+
+            const services = createMockServices({
+                cache: {
+                    clear: jest.fn(),
+                    get: jest.fn(),
+                    set: jest.fn(),
+                    getStats: jest.fn().mockReturnValue({ totalEntries: 0 }),
+                    cleanupExpired: jest.fn()
+                }
+            });
+            const handlers = new ToolHandlers(mockConfig, services, true, []);
+
+            // Override executeToolCall to return a string
+            jest.spyOn(handlers, 'executeToolCall').mockResolvedValue('plain text result');
+
+            createSdkServer(handlers);
+
+            const mockInstance = McpServer.mock.results[0].value;
+            const call = mockInstance.registerTool.mock.calls.find(
+                (c: any[]) => c[0] === 'get_saved_queries'
+            );
+            const callback = call[2];
+            const result = await callback({});
+
+            expect(result.content[0].text).toBe('plain text result');
+        });
+    });
+
+    describe('toolDefinitions helpers', () => {
+        test('getToolDefinition returns tool by name', () => {
+            const tool = getToolDefinition('query_telemetry');
+            expect(tool).toBeDefined();
+            expect(tool!.name).toBe('query_telemetry');
+        });
+
+        test('getToolDefinition returns undefined for missing tool', () => {
+            const tool = getToolDefinition('nonexistent');
+            expect(tool).toBeUndefined();
+        });
+
+        test('getToolNames returns all tool names', () => {
+            const names = getToolNames();
+            expect(names).toContain('query_telemetry');
+            expect(names).toContain('get_saved_queries');
+            expect(names).toContain('list_profiles');
+            expect(names.length).toBe(TOOL_DEFINITIONS.length);
         });
     });
 });
