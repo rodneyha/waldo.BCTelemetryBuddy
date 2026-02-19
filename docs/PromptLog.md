@@ -2603,3 +2603,7 @@ Change instructions an business logic to do this."
 > "Fix CI failures: regenerate root package-lock.json with SDK transitive deps, update releaseNotesProvider tests for v3.0.0 content, move tags to fix commit"
 
 ---
+### Entry ID: 6dfff559-8afc-485a-93e0-f598d935658f — 2026-02-19 20:58
+> "Fix CI coverage threshold failure: add comprehensive tests for toolHandlers.ts and mcpSdkServer.ts, bringing coverage from 33% to 76% (above 70% threshold)"
+
+---

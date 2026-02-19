@@ -1494,3 +1494,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-19** — Fix CI: root lock file + release notes tests [Entry: 32d4f562-8696-47ad-8b9d-ce34dc751ae5]
   - **Why:** All 4 CI workflows failed because root package-lock.json was stale (missing SDK transitive deps) and releaseNotesProvider tests expected old v1.0.5 content
   - **How:** Ran npm install --package-lock-only to regenerate root lock file (+863 lines), updated test assertions for v3.0.0 content, moved tags to new commit c112c44
+- **2026-02-19** — Add coverage tests for toolHandlers + mcpSdkServer [Entry: 6dfff559-8afc-485a-93e0-f598d935658f]
+  - **Why:** CI failed because new extracted files (toolHandlers.ts at 10%, mcpSdkServer.ts at 54%) dragged global coverage below 70% threshold
+  - **How:** Created toolHandlers.test.ts (70 tests covering dispatch, business logic, helpers) and expanded mcp-sdk-server.test.ts (Zod conversion, annotations, toolDefinitions helpers). Coverage now 76%/70%/84%/76%.
