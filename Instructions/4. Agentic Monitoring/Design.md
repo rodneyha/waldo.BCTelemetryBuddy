@@ -1,0 +1,1246 @@
+# Agentic Autonomous Telemetry Monitoring — Technical Design
+
+> **GitHub Issue**: [#98 — Feature: Agentic Autonomous Telemetry Monitoring](https://github.com/waldo1001/waldo.BCTelemetryBuddy/issues/98)
+>
+> **Status**: Design  
+> **Created**: 2026-02-24  
+
+---
+
+## 1. Problem Statement
+
+BCTelemetryBuddy has a complete set of MCP tools for querying Business Central telemetry (KQL execution, event discovery, tenant mapping, query management). These tools work when a human or an LLM asks them to — but there is no autonomous, scheduled monitoring capability.
+
+Users need:
+- **Autonomous agents** that run on a schedule and follow up on issues without human intervention.
+- **Prompt-defined behavior** — each agent's purpose is described in natural language, not JSON rules.
+- **Accumulated context** — agents remember what they found previously and build on it.
+- **Pipeline integration** — agents run inside GitHub Actions or Azure DevOps Pipelines.
+- **Closed-loop issue lifecycle** — detection → investigation → escalation → resolution.
+
+---
+
+## 2. Architecture Overview
+
+### 2.1 Core Principle
+
+```
+An agent = instruction (prompt) + accumulated context + existing MCP tools + LLM reasoning
+```
+
+The agent runtime is a **ReAct loop** that:
+1. Reads the agent's instruction and previous state
+2. Sends both to Azure OpenAI along with available tool definitions
+3. The LLM reasons about what to do, calls tools, observes results, repeats
+4. Produces findings, assessment, and actions
+5. Writes updated state to disk
+6. The CI/CD pipeline commits the state back to Git
+
+### 2.2 Component Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  SCHEDULER (pick one)                                               │
+│  ┌────────────┐ ┌───────────┐ ┌──────────────┐ ┌───────────────┐   │
+│  │ GitHub      │ │ Azure     │ │ Azure        │ │ Container     │   │
+│  │ Actions     │ │ DevOps    │ │ Functions    │ │ App           │   │
+│  │ (cron)      │ │ Pipeline  │ │ (timer)      │ │ (loop)        │   │
+│  └──────┬──────┘ └─────┬─────┘ └──────┬───────┘ └──────┬────────┘  │
+│         └───────────────┴──────────────┴────────────────┘           │
+│                              │                                      │
+│                    bctb-mcp agent run <name> --once                  │
+│                              │                                      │
+├──────────────────────────────┼──────────────────────────────────────┤
+│  NEW CODE (~500 LOC total)   │                                      │
+│                              │                                      │
+│  ┌───────────────────────────▼───────────────────────────────────┐  │
+│  │  Agent Runtime (src/agent/runtime.ts)                          │  │
+│  │  ┌─────────────────────────────────────────────────────────┐  │  │
+│  │  │ while (true) {                                           │  │  │
+│  │  │   response = await azureOpenAI.chat(messages, { tools }) │  │  │
+│  │  │   if (response.toolCalls)                                │  │  │
+│  │  │     for (call of toolCalls)                              │  │  │
+│  │  │       result = toolHandlers.executeToolCall(call)         │  │  │
+│  │  │       messages.push({ role: 'tool', content: result })   │  │  │
+│  │  │   else                                                   │  │  │
+│  │  │     break  // LLM is done reasoning                      │  │  │
+│  │  │ }                                                        │  │  │
+│  │  └─────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                              │                                      │
+│  ┌──────────────┐  ┌────────▼────────┐  ┌────────────────────────┐ │
+│  │ Context Mgr   │  │ Action Dispatch │  │ CLI Commands           │ │
+│  │ (context.ts)  │  │ (actions.ts)    │  │ (cli additions)        │ │
+│  │ ~150 LOC      │  │ ~100 LOC        │  │ ~100 LOC               │ │
+│  └──────────────┘  └─────────────────┘  └────────────────────────┘ │
+│                                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│  EXISTING CODE (zero changes needed)                                │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │  ToolHandlers.executeToolCall()                                │  │
+│  │  ├── query_telemetry         → KustoService                    │  │
+│  │  ├── get_event_catalog       → KustoService                    │  │
+│  │  ├── get_event_field_samples → KustoService                    │  │
+│  │  ├── get_event_schema        → KustoService                    │  │
+│  │  ├── get_tenant_mapping      → KustoService                    │  │
+│  │  ├── save_query              → QueriesService                  │  │
+│  │  ├── search_queries          → QueriesService                  │  │
+│  │  ├── get_saved_queries       → QueriesService                  │  │
+│  │  ├── get_categories          → QueriesService                  │  │
+│  │  ├── get_recommendations     → (inline logic)                  │  │
+│  │  ├── get_external_queries    → ReferencesService               │  │
+│  │  ├── list_profiles           → Config                          │  │
+│  │  └── switch_profile          → Config                          │  │
+│  │                                                                │  │
+│  │  AuthService · CacheService · Config · Profiles                │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. Workspace Layout
+
+All agent state lives in the workspace directory (the same Git repo that holds queries and config).
+
+```
+workspace/
+├── .bctb-config.json              ← existing: connection profiles + NEW agents section
+├── queries/                       ← existing: saved KQL queries
+│   └── Monitoring/                ← convention: detection queries saved here by agents
+├── agents/                        ← NEW: all agent definitions and state
+│   ├── appsource-validation/
+│   │   ├── instruction.md         ← the prompt that defines this agent
+│   │   ├── state.json             ← current state + rolling context
+│   │   └── runs/                  ← individual run outputs (audit trail)
+│   │       ├── 2026-02-24T10-00Z.json
+│   │       ├── 2026-02-24T11-00Z.json
+│   │       └── 2026-02-24T12-00Z.json
+│   └── performance/
+│       ├── instruction.md
+│       ├── state.json
+│       └── runs/
+└── .bctb/
+    └── cache/                     ← existing: query result cache (NOT committed)
+```
+
+---
+
+## 4. File Specifications
+
+### 4.1 `instruction.md` — Agent Definition
+
+Plain markdown file. The user writes this. It is the **only input** required to create an agent.
+
+```markdown
+Monitor AppSource validation telemetry for my extensions.
+
+Check for validation failures (RT0005 events with error status),
+categorize by extension name and failure type.
+
+If failures persist across 3 consecutive checks, post to the Teams channel.
+If failures persist across 6 consecutive checks, create an Azure DevOps work item.
+
+Focus on the last 2 hours of data each run.
+Ignore test tenants (any tenant with "test" or "sandbox" in the company name).
+```
+
+**Design rules:**
+- No required structure or schema — free-form natural language.
+- The LLM receives this verbatim as its instruction.
+- Changing behavior = editing this file. No code changes, no config changes.
+- The file is version-controlled — instruction history is Git history.
+
+### 4.2 `state.json` — Agent Memory
+
+Read at the start of each run, written at the end. This is how the agent "remembers" across runs.
+
+```typescript
+interface AgentState {
+    // Metadata
+    agentName: string;
+    created: string;               // ISO 8601
+    lastRun: string;               // ISO 8601
+    runCount: number;
+    status: 'active' | 'paused';
+
+    // Rolling memory (written by LLM)
+    summary: string;               // LLM-written digest of all previous runs
+
+    // Structured issue tracking
+    activeIssues: AgentIssue[];
+    resolvedIssues: AgentIssue[];  // pruned after 30 days
+
+    // Recent run detail (sliding window of last N runs)
+    recentRuns: AgentRunSummary[];
+}
+
+interface AgentIssue {
+    id: string;                    // e.g., "issue-001"
+    fingerprint: string;           // deterministic dedup key
+    title: string;
+    firstSeen: string;             // ISO 8601
+    lastSeen: string;              // ISO 8601
+    consecutiveDetections: number;
+    trend: 'increasing' | 'stable' | 'decreasing';
+    counts: number[];              // count per run (last N)
+    actionsTaken: AgentAction[];
+}
+
+interface AgentRunSummary {
+    runId: number;
+    timestamp: string;             // ISO 8601
+    durationMs: number;
+    toolCalls: string[];           // tool names called
+    findings: string;              // LLM-written summary of this run
+    actions: AgentAction[];
+}
+
+interface AgentAction {
+    run: number;
+    action: string;                // "teams-webhook" | "devops-workitem" | "pipeline-trigger"
+    timestamp: string;
+    status: 'sent' | 'failed';
+    details?: Record<string, any>;
+}
+```
+
+**Bounded memory strategy:**
+- `recentRuns` is a sliding window (configurable, default: 5).
+- When a run falls off the window, the LLM is asked to update `summary` to incorporate it.
+- `resolvedIssues` are pruned after 30 days.
+- This keeps `state.json` bounded regardless of how many runs have occurred.
+
+### 4.3 `runs/<timestamp>.json` — Audit Trail
+
+One file per run, **append-only, never modified**. Full detail for debugging and auditing.
+
+```typescript
+interface AgentRunLog {
+    // Identity
+    runId: number;
+    agentName: string;
+    timestamp: string;
+    durationMs: number;
+
+    // Input
+    instruction: string;           // snapshot of instruction.md at run time
+    stateAtStart: {
+        summary: string;
+        activeIssueCount: number;
+        runCount: number;
+    };
+
+    // LLM interaction
+    llm: {
+        model: string;
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        toolCallCount: number;
+    };
+
+    // Tool calls (detailed)
+    toolCalls: {
+        sequence: number;
+        tool: string;
+        args: Record<string, any>;
+        resultSummary: string;     // truncated for readability
+        durationMs: number;
+    }[];
+
+    // Output
+    assessment: string;            // LLM's assessment of the situation
+    findings: string;              // what was found this run
+    actions: AgentAction[];        // actions taken
+
+    // State changes
+    stateChanges: {
+        issuesCreated: string[];   // issue IDs
+        issuesUpdated: string[];
+        issuesResolved: string[];
+        summaryUpdated: boolean;
+    };
+}
+```
+
+**Run file naming convention:** `YYYY-MM-DDTHH-MMZ.json` (UTC, hyphens instead of colons for filesystem compatibility).
+
+---
+
+## 5. Agent Runtime — Detailed Design
+
+### 5.1 Module: `src/agent/runtime.ts`
+
+The core ReAct loop. This is the central piece of new code.
+
+```typescript
+// Pseudocode — actual implementation will follow this structure
+
+import { ToolHandlers } from '../tools/toolHandlers.js';
+import { TOOL_DEFINITIONS } from '../tools/toolDefinitions.js';
+import { AgentContextManager } from './context.js';
+import { ActionDispatcher } from './actions.js';
+import { buildAgentPrompt, AGENT_SYSTEM_PROMPT, parseAgentOutput } from './prompts.js';
+
+interface AgentRuntimeConfig {
+    // LLM
+    azureOpenAIEndpoint: string;
+    azureOpenAIKey: string;
+    azureOpenAIDeployment: string;   // e.g., "gpt-4o"
+
+    // Limits
+    maxToolCalls: number;            // default: 20 — safety limit
+    maxTokens: number;               // default: 4096 — response limit
+    contextWindowRuns: number;       // default: 5 — sliding window size
+}
+
+export class AgentRuntime {
+    private toolHandlers: ToolHandlers;
+    private contextManager: AgentContextManager;
+    private actionDispatcher: ActionDispatcher;
+    private config: AgentRuntimeConfig;
+
+    constructor(
+        toolHandlers: ToolHandlers,
+        contextManager: AgentContextManager,
+        actionDispatcher: ActionDispatcher,
+        config: AgentRuntimeConfig
+    ) { ... }
+
+    /**
+     * Execute a single monitoring pass for the named agent.
+     * Returns the run log.
+     */
+    async run(agentName: string): Promise<AgentRunLog> {
+        const startTime = Date.now();
+
+        // 1. Load instruction and state
+        const instruction = this.contextManager.loadInstruction(agentName);
+        const state = this.contextManager.loadState(agentName);
+
+        // 2. Build initial messages
+        const tools = this.formatToolsForOpenAI(TOOL_DEFINITIONS);
+        const messages = [
+            { role: 'system', content: AGENT_SYSTEM_PROMPT },
+            { role: 'user', content: buildAgentPrompt(instruction, state) }
+        ];
+
+        // 3. ReAct loop
+        const toolCallLog: ToolCallEntry[] = [];
+        let totalToolCalls = 0;
+        let llmStats = { promptTokens: 0, completionTokens: 0 };
+
+        while (totalToolCalls < this.config.maxToolCalls) {
+            const response = await this.callLLM(messages, tools);
+            llmStats.promptTokens += response.usage.promptTokens;
+            llmStats.completionTokens += response.usage.completionTokens;
+
+            if (response.toolCalls && response.toolCalls.length > 0) {
+                // LLM wants to call tools
+                messages.push(response.assistantMessage);
+
+                for (const call of response.toolCalls) {
+                    totalToolCalls++;
+                    const callStart = Date.now();
+
+                    const result = await this.toolHandlers.executeToolCall(
+                        call.function.name,
+                        JSON.parse(call.function.arguments)
+                    );
+
+                    const resultStr = typeof result === 'string'
+                        ? result
+                        : JSON.stringify(result, null, 2);
+
+                    messages.push({
+                        role: 'tool',
+                        content: resultStr,
+                        tool_call_id: call.id
+                    });
+
+                    toolCallLog.push({
+                        sequence: totalToolCalls,
+                        tool: call.function.name,
+                        args: JSON.parse(call.function.arguments),
+                        resultSummary: resultStr.substring(0, 500),
+                        durationMs: Date.now() - callStart
+                    });
+                }
+            } else {
+                // LLM is done reasoning — parse final output
+                const output = parseAgentOutput(response.content);
+
+                // 4. Execute actions
+                const executedActions = await this.actionDispatcher.execute(
+                    output.actions,
+                    agentName,
+                    state
+                );
+
+                // 5. Update state
+                const updatedState = this.contextManager.updateState(
+                    agentName,
+                    state,
+                    output,
+                    executedActions
+                );
+
+                // 6. Save run log
+                const runLog: AgentRunLog = {
+                    runId: state.runCount + 1,
+                    agentName,
+                    timestamp: new Date().toISOString(),
+                    durationMs: Date.now() - startTime,
+                    instruction,
+                    stateAtStart: {
+                        summary: state.summary,
+                        activeIssueCount: state.activeIssues.length,
+                        runCount: state.runCount
+                    },
+                    llm: {
+                        model: this.config.azureOpenAIDeployment,
+                        promptTokens: llmStats.promptTokens,
+                        completionTokens: llmStats.completionTokens,
+                        totalTokens: llmStats.promptTokens + llmStats.completionTokens,
+                        toolCallCount: totalToolCalls
+                    },
+                    toolCalls: toolCallLog,
+                    assessment: output.assessment,
+                    findings: output.findings,
+                    actions: executedActions,
+                    stateChanges: output.stateChanges
+                };
+
+                this.contextManager.saveRunLog(agentName, runLog);
+                this.contextManager.saveState(agentName, updatedState);
+
+                return runLog;
+            }
+        }
+
+        // Safety: max tool calls reached
+        throw new Error(`Agent ${agentName} exceeded max tool calls (${this.config.maxToolCalls})`);
+    }
+}
+```
+
+### 5.2 Module: `src/agent/context.ts`
+
+Manages reading/writing agent files. Follows the same patterns as existing `QueriesService` and `CacheService`.
+
+```typescript
+export class AgentContextManager {
+    private workspacePath: string;
+    private agentsDir: string;
+    private contextWindowSize: number;
+
+    constructor(workspacePath: string, contextWindowSize: number = 5) {
+        this.workspacePath = workspacePath;
+        this.agentsDir = path.join(workspacePath, 'agents');
+        this.contextWindowSize = contextWindowSize;
+    }
+
+    // --- Read operations ---
+
+    loadInstruction(agentName: string): string {
+        const filePath = path.join(this.agentsDir, agentName, 'instruction.md');
+        return fs.readFileSync(filePath, 'utf-8');
+    }
+
+    loadState(agentName: string): AgentState {
+        const filePath = path.join(this.agentsDir, agentName, 'state.json');
+        if (!fs.existsSync(filePath)) {
+            return this.createInitialState(agentName);
+        }
+        return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    }
+
+    listAgents(): AgentInfo[] {
+        // Scan agents/ directory for subdirectories with instruction.md
+    }
+
+    getRunHistory(agentName: string, limit?: number): AgentRunLog[] {
+        // Read runs/ directory, parse JSON files, return sorted by timestamp
+    }
+
+    // --- Write operations ---
+
+    createAgent(agentName: string, instruction: string): void {
+        const agentDir = path.join(this.agentsDir, agentName);
+        fs.mkdirSync(agentDir, { recursive: true });
+        fs.mkdirSync(path.join(agentDir, 'runs'), { recursive: true });
+        fs.writeFileSync(path.join(agentDir, 'instruction.md'), instruction, 'utf-8');
+        fs.writeFileSync(
+            path.join(agentDir, 'state.json'),
+            JSON.stringify(this.createInitialState(agentName), null, 2),
+            'utf-8'
+        );
+    }
+
+    saveState(agentName: string, state: AgentState): void {
+        const filePath = path.join(this.agentsDir, agentName, 'state.json');
+        fs.writeFileSync(filePath, JSON.stringify(state, null, 2), 'utf-8');
+    }
+
+    saveRunLog(agentName: string, runLog: AgentRunLog): void {
+        const runsDir = path.join(this.agentsDir, agentName, 'runs');
+        fs.mkdirSync(runsDir, { recursive: true });
+        const timestamp = runLog.timestamp.replace(/:/g, '-').replace(/\.\d+Z$/, 'Z');
+        const filePath = path.join(runsDir, `${timestamp}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(runLog, null, 2), 'utf-8');
+    }
+
+    updateState(
+        agentName: string,
+        previousState: AgentState,
+        output: AgentOutput,
+        executedActions: AgentAction[]
+    ): AgentState {
+        // 1. Update summary (LLM-written)
+        // 2. Update active/resolved issues based on output
+        // 3. Push new run to recentRuns, trim to window size
+        // 4. Increment runCount, update lastRun
+        // See Section 7 for compaction logic
+    }
+
+    private createInitialState(agentName: string): AgentState {
+        return {
+            agentName,
+            created: new Date().toISOString(),
+            lastRun: '',
+            runCount: 0,
+            status: 'active',
+            summary: '',
+            activeIssues: [],
+            resolvedIssues: [],
+            recentRuns: []
+        };
+    }
+}
+```
+
+### 5.3 Module: `src/agent/actions.ts`
+
+Executes external actions requested by the agent. Each action type is a simple HTTP call.
+
+```typescript
+export interface ActionConfig {
+    'teams-webhook'?: { url: string };
+    'devops-workitem'?: {
+        orgUrl: string;      // e.g., "https://dev.azure.com/contoso"
+        project: string;
+        pat: string;
+        workItemType?: string; // default: "Bug"
+    };
+    'pipeline-trigger'?: {
+        orgUrl: string;
+        project: string;
+        pipelineId: number;
+        pat: string;
+    };
+}
+
+export class ActionDispatcher {
+    private config: ActionConfig;
+
+    constructor(config: ActionConfig) { ... }
+
+    async execute(
+        requestedActions: RequestedAction[],
+        agentName: string,
+        state: AgentState
+    ): Promise<AgentAction[]> {
+        const executed: AgentAction[] = [];
+
+        for (const action of requestedActions) {
+            try {
+                switch (action.type) {
+                    case 'teams-webhook':
+                        await this.sendTeamsNotification(action, agentName);
+                        break;
+                    case 'devops-workitem':
+                        await this.createDevOpsWorkItem(action, agentName);
+                        break;
+                    case 'pipeline-trigger':
+                        await this.triggerPipeline(action, agentName);
+                        break;
+                }
+                executed.push({ ...action, status: 'sent', timestamp: new Date().toISOString() });
+            } catch (error) {
+                executed.push({ ...action, status: 'failed', timestamp: new Date().toISOString() });
+            }
+        }
+
+        return executed;
+    }
+
+    private async sendTeamsNotification(action: RequestedAction, agentName: string): Promise<void> {
+        // POST to Teams Incoming Webhook URL
+        // Format: Adaptive Card with agent name, findings, severity
+        const url = this.config['teams-webhook']?.url;
+        if (!url) throw new Error('Teams webhook URL not configured');
+
+        await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                '@type': 'MessageCard',
+                summary: `Agent: ${agentName}`,
+                themeColor: action.severity === 'high' ? 'FF0000' : 'FFA500',
+                title: action.title,
+                text: action.message
+            })
+        });
+    }
+
+    private async createDevOpsWorkItem(action: RequestedAction, agentName: string): Promise<void> {
+        // POST to Azure DevOps REST API
+        // POST https://dev.azure.com/{org}/{project}/_apis/wit/workitems/${type}?api-version=7.0
+        const config = this.config['devops-workitem'];
+        if (!config) throw new Error('DevOps work item config not set');
+
+        const type = config.workItemType || 'Bug';
+        const url = `${config.orgUrl}/${config.project}/_apis/wit/workitems/$${type}?api-version=7.0`;
+
+        await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json-patch+json',
+                'Authorization': `Basic ${Buffer.from(`:${config.pat}`).toString('base64')}`
+            },
+            body: JSON.stringify([
+                { op: 'add', path: '/fields/System.Title', value: action.title },
+                { op: 'add', path: '/fields/System.Description', value: action.message },
+                { op: 'add', path: '/fields/System.Tags', value: `bctb-agent;${agentName}` }
+            ])
+        });
+    }
+
+    private async triggerPipeline(action: RequestedAction, agentName: string): Promise<void> {
+        // POST to Azure DevOps Pipeline Run API
+        const config = this.config['pipeline-trigger'];
+        if (!config) throw new Error('Pipeline trigger config not set');
+
+        const url = `${config.orgUrl}/${config.project}/_apis/pipelines/${config.pipelineId}/runs?api-version=7.0`;
+
+        await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${Buffer.from(`:${config.pat}`).toString('base64')}`
+            },
+            body: JSON.stringify({
+                resources: { repositories: { self: { refName: 'refs/heads/main' } } },
+                templateParameters: {
+                    agentName,
+                    investigationId: action.investigationId || ''
+                }
+            })
+        });
+    }
+}
+```
+
+### 5.4 Module: `src/agent/prompts.ts`
+
+System prompt and prompt builder for the agent.
+
+```typescript
+export const AGENT_SYSTEM_PROMPT = `
+You are a telemetry monitoring agent for Microsoft Dynamics 365 Business Central.
+You run on a schedule and monitor telemetry data using the tools provided.
+
+## Your Behavior
+
+1. READ your instruction carefully — it defines what you monitor and how you respond.
+2. READ your previous state — it tells you what you found before and what issues are active.
+3. USE TOOLS to gather current telemetry data:
+   - Always start with get_event_catalog if this is your first run or if you need to discover events.
+   - Use get_event_field_samples before writing queries for unfamiliar events.
+   - Use get_tenant_mapping if your instruction involves specific customers.
+   - Use query_telemetry to execute KQL queries.
+4. ASSESS findings by comparing with previous state:
+   - Is this a new issue or a continuation of an existing one?
+   - Is the situation improving, stable, or worsening?
+   - Does this require escalation per your instruction?
+5. DECIDE on actions based on your instruction:
+   - Only take actions explicitly described in your instruction.
+   - Track consecutive detections accurately.
+6. REPORT your findings, assessment, and actions in the structured output format.
+
+## Output Format
+
+You MUST respond with a JSON object matching this structure:
+
+{
+  "summary": "Updated rolling summary incorporating this run's findings",
+  "findings": "What you found this run (human-readable)",
+  "assessment": "Your interpretation and reasoning",
+  "activeIssues": [
+    {
+      "id": "issue-XXX",
+      "fingerprint": "deterministic-key",
+      "title": "Short description",
+      "consecutiveDetections": 3,
+      "trend": "increasing",
+      "counts": [47, 52, 61],
+      "lastSeen": "2026-02-24T12:00:00Z"
+    }
+  ],
+  "resolvedIssues": ["issue-YYY"],
+  "actions": [
+    {
+      "type": "teams-webhook",
+      "title": "Alert title",
+      "message": "Alert body",
+      "severity": "high"
+    }
+  ],
+  "stateChanges": {
+    "issuesCreated": ["issue-XXX"],
+    "issuesUpdated": ["issue-ZZZ"],
+    "issuesResolved": ["issue-YYY"],
+    "summaryUpdated": true
+  }
+}
+
+## Rules
+
+- Do NOT invent data. Only report what you find in real telemetry.
+- Do NOT take actions that are not described in your instruction.
+- Do NOT re-alert for issues that have already been escalated (check actionsTaken in state).
+- Keep summaries concise — each run's findings should be 1-3 sentences.
+- Use deterministic fingerprints so the same issue is tracked consistently across runs.
+`;
+
+export function buildAgentPrompt(instruction: string, state: AgentState): string {
+    const now = new Date().toISOString();
+    const runNumber = state.runCount + 1;
+
+    let prompt = `## Your Instruction\n\n${instruction}\n\n`;
+    prompt += `## Current Time\n\n${now} (Run #${runNumber})\n\n`;
+
+    if (state.runCount === 0) {
+        prompt += `## Previous State\n\nThis is your FIRST RUN. No previous context.\n\n`;
+    } else {
+        prompt += `## Previous State\n\n`;
+        prompt += `### Summary\n${state.summary}\n\n`;
+
+        if (state.activeIssues.length > 0) {
+            prompt += `### Active Issues (${state.activeIssues.length})\n`;
+            prompt += '```json\n' + JSON.stringify(state.activeIssues, null, 2) + '\n```\n\n';
+        }
+
+        if (state.recentRuns.length > 0) {
+            prompt += `### Recent Runs (last ${state.recentRuns.length})\n`;
+            for (const run of state.recentRuns) {
+                prompt += `- **Run ${run.runId}** (${run.timestamp}): ${run.findings}\n`;
+                if (run.actions.length > 0) {
+                    prompt += `  Actions: ${run.actions.map(a => a.action).join(', ')}\n`;
+                }
+            }
+            prompt += '\n';
+        }
+    }
+
+    prompt += `## Task\n\nExecute your instruction now. Use tools to gather data, assess the situation, and take any actions required by your instruction.\n`;
+
+    return prompt;
+}
+
+export function parseAgentOutput(content: string): AgentOutput {
+    // Extract JSON from LLM response (may be wrapped in markdown code fences)
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || 
+                      content.match(/\{[\s\S]*\}/);
+    
+    if (!jsonMatch) {
+        throw new Error('Agent did not produce valid JSON output');
+    }
+
+    const jsonStr = jsonMatch[1] || jsonMatch[0];
+    return JSON.parse(jsonStr);
+}
+```
+
+---
+
+## 6. CLI Commands
+
+Add to the existing CLI in `src/cli.ts` (Commander.js).
+
+### 6.1 `agent start`
+
+```bash
+bctb-mcp agent start "Monitor AppSource validation..." --name appsource-validation
+```
+
+Creates:
+- `agents/appsource-validation/instruction.md`
+- `agents/appsource-validation/state.json` (empty initial state)
+- `agents/appsource-validation/runs/` (empty directory)
+
+### 6.2 `agent run`
+
+```bash
+# Single pass (for pipelines)
+bctb-mcp agent run appsource-validation --once
+
+# Continuous (for containers/services)
+bctb-mcp agent run appsource-validation --interval 60m
+
+# Run all active agents
+bctb-mcp agent run-all --once
+```
+
+### 6.3 `agent list`
+
+```bash
+bctb-mcp agent list
+```
+
+Output:
+```
+Agents:
+  appsource-validation   active    3 runs    last: 2026-02-24T12:00Z    1 active issue
+  performance            active    7 runs    last: 2026-02-24T12:00Z    0 active issues
+  contoso-health         paused    12 runs   last: 2026-02-23T18:00Z    2 active issues
+```
+
+### 6.4 `agent history`
+
+```bash
+bctb-mcp agent history appsource-validation --limit 5
+```
+
+Output:
+```
+Run History (appsource-validation):
+  #3  2026-02-24T12:00Z  45s  3 tools  "Sales Turbo errors persist (61). Sent Teams alert."
+  #2  2026-02-24T11:00Z  38s  1 tool   "Sales Turbo up to 52. Warehouse resolved."
+  #1  2026-02-24T10:00Z  52s  3 tools  "Initial scan. Found 2 issue patterns."
+```
+
+### 6.5 `agent edit`
+
+```bash
+bctb-mcp agent edit appsource-validation
+```
+
+Opens `instruction.md` in `$EDITOR`. Alternatively, users just edit the file directly in VS Code.
+
+### 6.6 `agent pause` / `agent resume`
+
+```bash
+bctb-mcp agent pause appsource-validation
+bctb-mcp agent resume appsource-validation
+```
+
+Sets `status` field in `state.json`. `run-all` skips paused agents.
+
+---
+
+## 7. Context Compaction
+
+### Problem
+If an agent runs hourly for 30 days, that's 720 runs. The `state.json` can't hold all of them.
+
+### Solution: Sliding Window + LLM Summarization
+
+```
+recentRuns window = 5 (configurable)
+
+Run 1: recentRuns = [1]
+Run 2: recentRuns = [1, 2]
+Run 3: recentRuns = [1, 2, 3]
+Run 4: recentRuns = [1, 2, 3, 4]
+Run 5: recentRuns = [1, 2, 3, 4, 5]
+Run 6: recentRuns = [2, 3, 4, 5, 6]  ← run 1 drops off, gets folded into summary
+```
+
+When a run drops off the window, the agent's output format includes an updated `summary` field that incorporates the dropped run's information. The LLM naturally does this because it sees the previous summary + the new findings and writes a new summary.
+
+### Resolved Issue Pruning
+
+Issues in `resolvedIssues` are kept for 30 days (so the agent can reference recent resolutions), then pruned by the context manager.
+
+---
+
+## 8. Configuration
+
+### 8.1 Additions to `.bctb-config.json`
+
+```json
+{
+    "connectionName": "My BC",
+    "tenantId": "...",
+    "authFlow": "client_credentials",
+    "clientId": "...",
+    "clientSecret": "...",
+    "applicationInsightsAppId": "...",
+    "kustoClusterUrl": "...",
+
+    "agents": {
+        "llm": {
+            "provider": "azure-openai",
+            "endpoint": "https://my-instance.openai.azure.com",
+            "deployment": "gpt-4o",
+            "apiVersion": "2024-10-21"
+        },
+        "defaults": {
+            "maxToolCalls": 20,
+            "maxTokens": 4096,
+            "contextWindowRuns": 5,
+            "resolvedIssueTTLDays": 30
+        },
+        "actions": {
+            "teams-webhook": {
+                "url": "https://outlook.office.com/webhook/..."
+            },
+            "devops-workitem": {
+                "orgUrl": "https://dev.azure.com/contoso",
+                "project": "BC-Ops",
+                "workItemType": "Bug"
+            },
+            "pipeline-trigger": {
+                "orgUrl": "https://dev.azure.com/contoso",
+                "project": "BC-Ops",
+                "pipelineId": 42
+            }
+        }
+    }
+}
+```
+
+**Secrets handling:**
+- `agents.llm.apiKey` → set via `AZURE_OPENAI_KEY` environment variable (not in config file)
+- `agents.actions.devops-workitem.pat` → set via `DEVOPS_PAT` environment variable
+- Same pattern as existing `clientSecret` handling
+
+### 8.2 Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL |
+| `AZURE_OPENAI_KEY` | Azure OpenAI API key |
+| `AZURE_OPENAI_DEPLOYMENT` | Model deployment name (e.g., "gpt-4o") |
+| `TEAMS_WEBHOOK_URL` | Teams Incoming Webhook URL |
+| `DEVOPS_PAT` | Azure DevOps Personal Access Token |
+| `DEVOPS_ORG_URL` | Azure DevOps org URL (override) |
+
+Environment variables override config file values (same pattern as existing config).
+
+---
+
+## 9. Pipeline Templates
+
+### 9.1 GitHub Actions
+
+File: `templates/github-actions/telemetry-agent.yml`
+
+```yaml
+name: Telemetry Monitoring Agents
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: 'Agent to run (blank = all)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  run-agents:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout workspace (includes agent state)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install BC Telemetry Buddy MCP
+        run: npm install -g bc-telemetry-buddy-mcp
+
+      - name: Run agent(s)
+        run: |
+          if [ -n "${{ inputs.agent }}" ]; then
+            bctb-mcp agent run "${{ inputs.agent }}" --once
+          else
+            bctb-mcp agent run-all --once
+          fi
+        env:
+          BCTB_AUTH_FLOW: client_credentials
+          BCTB_TENANT_ID: ${{ secrets.BCTB_TENANT_ID }}
+          BCTB_CLIENT_ID: ${{ secrets.BCTB_CLIENT_ID }}
+          BCTB_CLIENT_SECRET: ${{ secrets.BCTB_CLIENT_SECRET }}
+          BCTB_APP_INSIGHTS_ID: ${{ secrets.BCTB_APP_INSIGHTS_ID }}
+          BCTB_KUSTO_CLUSTER_URL: ${{ secrets.BCTB_KUSTO_CLUSTER_URL }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_DEPLOYMENT: gpt-4o
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          DEVOPS_PAT: ${{ secrets.DEVOPS_PAT }}
+
+      - name: Commit updated agent state
+        run: |
+          git config user.name "bctb-agent"
+          git config user.email "bctb-agent@noreply.github.com"
+          git add agents/
+          if git diff --cached --quiet; then
+            echo "No state changes"
+          else
+            git commit -m "agent: run $(date -u +%Y-%m-%dT%H:%M)Z"
+            git push
+          fi
+```
+
+### 9.2 Azure DevOps Pipeline
+
+File: `templates/azure-devops/azure-pipelines.yml`
+
+```yaml
+trigger: none
+
+schedules:
+  - cron: '0 * * * *'
+    displayName: 'Hourly agent run'
+    branches:
+      include: [main]
+    always: true
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: bctb-secrets
+
+steps:
+  - checkout: self
+    persistCredentials: true
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+
+  - script: npm install -g bc-telemetry-buddy-mcp
+    displayName: 'Install BCTB MCP'
+
+  - script: bctb-mcp agent run-all --once
+    displayName: 'Run all agents'
+    env:
+      BCTB_AUTH_FLOW: client_credentials
+      BCTB_TENANT_ID: $(BCTB_TENANT_ID)
+      BCTB_CLIENT_ID: $(BCTB_CLIENT_ID)
+      BCTB_CLIENT_SECRET: $(BCTB_CLIENT_SECRET)
+      BCTB_APP_INSIGHTS_ID: $(BCTB_APP_INSIGHTS_ID)
+      BCTB_KUSTO_CLUSTER_URL: $(BCTB_KUSTO_CLUSTER_URL)
+      AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+      AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
+      AZURE_OPENAI_DEPLOYMENT: gpt-4o
+      TEAMS_WEBHOOK_URL: $(TEAMS_WEBHOOK_URL)
+      DEVOPS_PAT: $(DEVOPS_PAT)
+
+  - script: |
+      git config user.name "bctb-agent"
+      git config user.email "bctb-agent@noreply.github.com"
+      git add agents/
+      git diff --cached --quiet || git commit -m "agent: run $(date -u +%Y-%m-%dT%H:%M)Z"
+      git push origin HEAD:main
+    displayName: 'Commit agent state'
+```
+
+---
+
+## 10. Example Agent Instructions
+
+### 10.1 AppSource Validation Monitor
+
+File: `templates/agents/appsource-validation.md`
+
+```markdown
+Monitor AppSource validation telemetry for my extensions.
+
+Check for validation failures (RT0005 events with error status),
+categorize by extension name and failure type.
+
+If failures persist across 3 consecutive checks, post to the Teams channel.
+If failures persist across 6 consecutive checks, create an Azure DevOps work item.
+
+Focus on the last 2 hours of data each run.
+Ignore test tenants (any tenant with "test" or "sandbox" in the company name).
+```
+
+### 10.2 Performance Monitor
+
+File: `templates/agents/performance-monitoring.md`
+
+```markdown
+Monitor Business Central performance across all tenants.
+
+Track these metrics:
+- Page load times (RT0006 events) — alert if p95 exceeds 5 seconds
+- Report execution times (RT0006, RT0007) — alert if p95 exceeds 30 seconds
+- AL method execution times — alert if any single method consistently exceeds 10 seconds
+
+Compare current hour against previous runs to detect degradation.
+If performance degrades for 2+ consecutive checks, post to Teams.
+If degradation persists for 5+ checks, create a DevOps work item.
+
+Group findings by tenant and identify which tenants are most affected.
+```
+
+### 10.3 Error Rate Monitor
+
+File: `templates/agents/error-rate-monitoring.md`
+
+```markdown
+Monitor overall error rates across Business Central environments.
+
+Check all events with error status. Group by event ID and tenant.
+
+Flag any event type where:
+- Error count in the last hour exceeds 100, OR
+- Error rate increased by more than 200% compared to the typical rate you've seen in previous runs
+
+For flagged issues:
+- First detection: Log the finding (no action)
+- Second consecutive detection: Post to Teams with affected tenants and error details
+- Third consecutive detection: Create a DevOps work item
+
+Summarize overall health: percentage of events in error vs success state.
+```
+
+### 10.4 Post-Deployment Watch
+
+File: `templates/agents/post-deployment-check.md`
+
+```markdown
+Post-deployment monitoring mode.
+
+Compare error rates and performance in the last 2 hours against
+the baseline from your previous runs (before deployment).
+
+Flag any metric that has worsened by more than 50% compared to pre-deployment baseline.
+
+If any regression is detected:
+- Immediately post to Teams with specific metrics and comparison
+- Create a DevOps work item with "deployment-regression" tag
+
+This agent should be started manually after a deployment and paused after 24 hours
+of stable operation.
+```
+
+---
+
+## 11. Testing Strategy
+
+### 11.1 Unit Tests
+
+| Module | Tests |
+|--------|-------|
+| `context.ts` | Create agent, load/save state, sliding window compaction, resolved issue pruning |
+| `actions.ts` | Mock HTTP calls for Teams webhook, DevOps work item, pipeline trigger |
+| `prompts.ts` | Prompt building with various state configurations, output parsing |
+| `runtime.ts` | Mock LLM responses to test ReAct loop, tool call dispatch, error handling, max tool call limit |
+| CLI commands | Agent start, list, history, pause/resume |
+
+### 11.2 Integration Tests
+
+- End-to-end: create agent → run with mocked LLM → verify state.json updated correctly
+- Multi-run: run agent 3 times → verify context accumulation and sliding window
+- Action execution: verify Teams webhook receives correct payload (mock server)
+
+### 11.3 Test Infrastructure
+
+Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP calls.
+
+---
+
+## 12. New Dependencies
+
+| Package | Purpose | Size Impact |
+|---------|---------|-------------|
+| None strictly required | Azure OpenAI can be called via native `fetch` | Zero |
+| `@azure/openai` (optional) | Typed Azure OpenAI SDK — better DX but adds dependency | ~200KB |
+
+**Recommendation:** Use native `fetch` (available in Node 20+) with typed interfaces. Avoids adding a dependency. The Azure OpenAI REST API is simple enough that a thin wrapper suffices.
+
+---
+
+## 13. Implementation Phases
+
+### Phase 1: Core Runtime (MVP)
+- [ ] `AgentContextManager` — create, load, save state
+- [ ] `AgentRuntime` — ReAct loop with Azure OpenAI
+- [ ] `parseAgentOutput` — extract structured output from LLM
+- [ ] CLI: `agent start`, `agent run --once`
+- [ ] Unit tests for all above
+- **Result:** An agent can be created and run manually from the command line.
+
+### Phase 2: Actions & CLI
+- [ ] `ActionDispatcher` — Teams webhook, DevOps work item
+- [ ] CLI: `agent list`, `agent history`, `agent pause/resume`, `agent run-all`
+- [ ] Context compaction (sliding window + LLM summary)
+- [ ] Resolved issue pruning
+- [ ] Unit + integration tests
+- **Result:** Full CLI, agents can notify and create work items.
+
+### Phase 3: Pipeline Templates & Examples
+- [ ] GitHub Actions workflow template
+- [ ] Azure DevOps Pipeline template
+- [ ] Example agent instructions (4 templates)
+- [ ] Documentation for setting up pipelines
+- [ ] End-to-end test with mocked pipeline context
+- **Result:** Users can set up autonomous monitoring in their CI/CD.
+
+### Phase 4: Polish & Documentation
+- [ ] Update UserGuide.md with agent documentation
+- [ ] Update MCP README with agent features
+- [ ] Add `agents` section to config-schema.json
+- [ ] Pipeline trigger action
+- [ ] Error handling hardening (LLM failures, API timeouts, malformed state)
+- **Result:** Production-ready, documented feature.
+
+---
+
+## 14. Cost Estimates
+
+| Component | Monthly Cost |
+|-----------|-------------|
+| Azure OpenAI (GPT-4o, ~3500 tokens/run, hourly) | ~$5-10 |
+| GitHub Actions (1440 min/month, free tier: 2000) | Free |
+| Azure DevOps Pipeline (1440 min/month, free tier: 1800) | Free |
+| Teams webhook | Free |
+| Azure DevOps work items | Free |
+| **Total** | **~$5-10/month** |
+
+---
+
+## 15. Security Considerations
+
+- **LLM API key**: Stored as pipeline secret, never in config file or state.json.
+- **DevOps PAT**: Same — pipeline secret only.
+- **State files**: May contain telemetry summaries. Ensure the Git repo is private if telemetry is sensitive.
+- **Tool call safety**: All MCP tools are read-only except `save_query`. The agent cannot modify telemetry data.
+- **Max tool calls**: Configurable limit prevents runaway LLM loops.
+- **No arbitrary code execution**: The agent can only call predefined MCP tools and predefined action types.
+
+---
+
+## 16. Open Questions
+
+1. **Should agents be able to call each other?** (e.g., AppSource agent triggers post-deployment agent). Recommendation: Not in v1.
+2. **Should the VS Code extension have agent management UI?** Recommendation: CLI-first, extension later.
+3. **Should agents support multiple profiles?** (e.g., run the same instruction across all profiles). Recommendation: Yes, via `--profile` flag on `agent run`.
+4. **Compaction strategy**: Should compaction happen as part of the agent's LLM call, or as a separate post-processing step? Recommendation: Part of the LLM call (simpler, the LLM already sees all the context).
