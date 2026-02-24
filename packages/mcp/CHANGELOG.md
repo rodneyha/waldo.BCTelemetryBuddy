@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Config file path for profile operations**: `switchProfile()`, `listProfiles()`, and `detectInitialProfile()` now use the stored `configFilePath` instead of hardcoding `path.join(workspacePath, '.bctb-config.json')`, fixing failures when config is loaded via `--config` or from the home directory (PR #96 by @StefanMaron, plus follow-up fix for `detectInitialProfile`)
+
 ## [3.0.0] - 2026-02-19
 
 ### Added

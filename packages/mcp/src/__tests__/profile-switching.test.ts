@@ -788,7 +788,150 @@ describe('Profile Switching', () => {
     });
 
     // ────────────────────────────────────────────────────────
-    // 6. Single profile config handling (config.ts level)
+    // 6. configFilePath fix (Issue #95 / PR #96)
+    //    Verifies that detectInitialProfile, switchProfile, and
+    //    listProfiles work when the config file lives OUTSIDE
+    //    workspacePath (e.g. loaded via --config /other/path.json)
+    // ────────────────────────────────────────────────────────
+    describe('configFilePath — non-default config location (Issue #95)', () => {
+        let externalConfigDir: string;
+
+        beforeEach(() => {
+            // Create a SECOND temp directory to simulate config outside workspace
+            externalConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bctb-external-config-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(externalConfigDir, { recursive: true, force: true });
+        });
+
+        /** Write multi-profile config to the external dir with a custom filename */
+        function createExternalMultiProfileConfig(): string {
+            const configPath = path.join(externalConfigDir, 'my-custom-config.json');
+            const config = {
+                defaultProfile: 'Alpha',
+                profiles: {
+                    _base: {
+                        authFlow: 'azure_cli',
+                        kustoClusterUrl: 'https://ade.applicationinsights.io'
+                    },
+                    Alpha: {
+                        extends: '_base',
+                        connectionName: 'Alpha Environment',
+                        applicationInsightsAppId: 'alpha-app-id',
+                        tenantId: 'alpha-tenant'
+                    },
+                    Beta: {
+                        extends: '_base',
+                        connectionName: 'Beta Environment',
+                        applicationInsightsAppId: 'beta-app-id',
+                        tenantId: 'beta-tenant'
+                    }
+                }
+            };
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+            return configPath;
+        }
+
+        it('loadConfigFromFile should set configFilePath on the returned config', () => {
+            const externalPath = createExternalMultiProfileConfig();
+            process.env.BCTB_WORKSPACE_PATH = tempDir;
+
+            const config = loadConfigFromFile(externalPath, 'Alpha', true);
+            expect(config).not.toBeNull();
+            expect(config!.configFilePath).toBe(externalPath);
+        });
+
+        it('detectInitialProfile should work when configFilePath points outside workspacePath', () => {
+            const externalPath = createExternalMultiProfileConfig();
+            // workspacePath has NO .bctb-config.json — but configFilePath points to the real file
+            const server = createTestServer({ configFilePath: externalPath });
+
+            delete process.env.BCTB_PROFILE;
+            const result = (server as any).detectInitialProfile();
+            expect(result).toBe('Alpha'); // defaultProfile from external config
+        });
+
+        it('detectInitialProfile should return null when configFilePath is not set and no file in workspacePath', () => {
+            // No configFilePath, no .bctb-config.json in tempDir
+            const server = createTestServer();
+            const result = (server as any).detectInitialProfile();
+            expect(result).toBeNull();
+        });
+
+        it('listProfiles should return multi-profile mode when configFilePath points outside workspacePath', () => {
+            const externalPath = createExternalMultiProfileConfig();
+            // workspacePath has NO config file
+            const server = createTestServer({ configFilePath: externalPath });
+            const result = (server as any).listProfiles();
+
+            expect(result.profileMode).toBe('multi');
+            // listProfiles returns currentProfile + availableProfiles (excludes active)
+            const allNames = [
+                result.currentProfile.name,
+                ...result.availableProfiles.map((p: any) => p.name)
+            ];
+            expect(allNames).toContain('Alpha');
+            expect(allNames).toContain('Beta');
+            expect(allNames).not.toContain('_base');
+        });
+
+        it('listProfiles should fall back to single mode when configFilePath is not set and no file in workspacePath', () => {
+            const server = createTestServer();
+            const result = (server as any).listProfiles();
+
+            expect(result.profileMode).toBe('single');
+        });
+
+        it('switchProfile should succeed when configFilePath points outside workspacePath', () => {
+            const externalPath = createExternalMultiProfileConfig();
+            process.env.BCTB_WORKSPACE_PATH = tempDir;
+            const server = createTestServer({ configFilePath: externalPath });
+
+            const result = (server as any).switchProfile('Beta');
+            expect(result.success).toBe(true);
+            expect(result.currentProfile.name).toBe('Beta');
+            expect(result.currentProfile.connectionName).toBe('Beta Environment');
+        });
+
+        it('switchProfile should fail when configFilePath is not set and no file in workspacePath', () => {
+            const server = createTestServer();
+            const result = (server as any).switchProfile('Beta');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No .bctb-config.json found');
+        });
+
+        it('full workflow: load from external path, detect profile, list, switch', () => {
+            const externalPath = createExternalMultiProfileConfig();
+            process.env.BCTB_WORKSPACE_PATH = tempDir;
+
+            // Load config from external path (simulates --config flag)
+            const config = loadConfigFromFile(externalPath, 'Alpha', true);
+            expect(config).not.toBeNull();
+            expect(config!.configFilePath).toBe(externalPath);
+
+            // Create server with that config
+            const server = new MCPServer(config!, 'stdio');
+
+            // detectInitialProfile should find the external config
+            delete process.env.BCTB_PROFILE;
+            const initialProfile = (server as any).detectInitialProfile();
+            expect(initialProfile).toBe('Alpha');
+
+            // listProfiles should see multi-profile mode
+            const profiles = (server as any).listProfiles();
+            expect(profiles.profileMode).toBe('multi');
+
+            // switchProfile should work
+            const switchResult = (server as any).switchProfile('Beta');
+            expect(switchResult.success).toBe(true);
+            expect(switchResult.currentProfile.name).toBe('Beta');
+        });
+    });
+
+    // ────────────────────────────────────────────────────────
+    // 7. Single profile config handling (config.ts level)
     // ────────────────────────────────────────────────────────
     describe('Single profile config handling', () => {
         it('should handle single-profile config without profiles key', () => {

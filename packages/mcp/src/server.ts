@@ -1208,7 +1208,7 @@ ${extendStatements}
         const path = require('path');
 
         try {
-            const configPath = path.join(this.config.workspacePath, '.bctb-config.json');
+            const configPath = this.config.configFilePath || path.join(this.config.workspacePath, '.bctb-config.json');
             if (!fs.existsSync(configPath)) {
                 return null;
             }
