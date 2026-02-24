@@ -2679,3 +2679,19 @@ Change instructions an business logic to do this."
 > "Commit under the issue"
 
 ---
+### Entry ID: ffd8803a-1e8a-4675-bc06-9112bdf81e6a — 2026-02-24 22:57
+> "Perform a patch release — both MCP and Extension"
+
+---
+### Entry ID: b8f2c740-f6d7-4f62-9af0-821e6f10cbf5 — 2026-02-24 22:58
+> "does the doc describe I need well documented example templates? ... Yes, update the design doc now"
+
+---
+### Entry ID: 5d3f9214-f419-4fcb-a06c-643be544a816 — 2026-02-24 23:04
+> "Fix CI build failure: McpEnvVars type incompatible with VS Code's McpServerDefinition.env"
+
+---
+### Entry ID: f71bbc02-74ab-437a-a4a8-68ab0550b58e - 2026-02-24 23:08
+> "Patch release extension v3.0.2 — CI type fix for buildMcpEnv return type"
+
+---

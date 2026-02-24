@@ -1551,3 +1551,15 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-24** — Committed issue #97 fix [Entry: ddeebb90-1cb5-49ac-8c62-cb6b04c91a5c]
   - **Why:** User requested commit linked to issue #97.
   - **How:** Committed as ec3a0d0 with 'fixes #97' in message for auto-close on push.
+- **2026-02-24** — Patch release: MCP v3.0.1 + Extension v3.0.1 [Entry: ffd8803a-1e8a-4675-bc06-9112bdf81e6a]
+  - **Why:** Release fixes from PR #96 (configFilePath) and Issue #97 (BCTB_PROFILE).
+  - **How:** Bumped both packages to 3.0.1, updated CHANGELOGs, tagged mcp-v3.0.1 and v3.0.1, pushed to main.
+- **2026-02-24** — Added Template Documentation Requirements + Fully Documented Example Agents to Design.md [Entry: b8f2c740-f6d7-4f62-9af0-821e6f10cbf5]
+  - **Why:** Templates were code-complete (YAML/instruction snippets) but lacked user-facing documentation — no READMEs, prerequisites, setup guides, customization points, expected output, or troubleshooting.
+  - **How:** Inserted Section 10 (documentation standards, folder structure, README templates) and expanded Section 11 with full README + instruction.md per agent template (AppSource, Performance, Error Rate, Post-Deployment) plus overview README. Renumbered sections 12-17. Updated Phase 3 checklist.
+- **2026-02-24** — Fixed CI type error in mcpEnvBuilder.ts [Entry: 5d3f9214-f419-4fcb-a06c-643be544a816]
+  - **Why:** CI failed because McpEnvVars index signature (string | undefined) was incompatible with VS Code's env type (string | number | null).
+  - **How:** Changed buildMcpEnv return type to Record<string, string>. Pushed d948d38.
+- **2026-02-24** - Patch release Extension v3.0.2 [Entry: f71bbc02-74ab-437a-a4a8-68ab0550b58e]
+  - **Why:** CI failed on v3.0.1 due to TS2322 type mismatch in mcpEnvBuilder.ts; fix was on main but not in a release.
+  - **How:** Bumped extension to 3.0.2, updated CHANGELOG, tagged v3.0.2, pushed to trigger CI/CD.
