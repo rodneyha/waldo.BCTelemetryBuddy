@@ -15,6 +15,7 @@ import { ProfileStatusBar } from './ui/profileStatusBar';
 import { ProfileManager } from './services/profileManager';
 import { showFirstRunNotification, startPeriodicUpdateChecks, checkForMCPUpdates } from './services/mcpInstaller';
 import { VSCodeAuthService } from './services/vscodeAuthService';
+import { buildMcpEnv } from './services/mcpEnvBuilder';
 import {
     VSCodeUsageTelemetry,
     TelemetryLevelFilter,
@@ -623,11 +624,6 @@ export function activate(context: vscode.ExtensionContext) {
             // Always use the active workspace (where user is working)
             const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
 
-            const mcpEnv: Record<string, string> = {};
-            if (workspacePath) {
-                mcpEnv.BCTB_WORKSPACE_PATH = workspacePath;
-            }
-
             // Check if using VS Code authentication
             // Only attempt authentication if we have valid configuration
             // Read authFlow from .bctb-config.json (not VS Code settings)
@@ -653,14 +649,14 @@ export function activate(context: vscode.ExtensionContext) {
                 authFlow = undefined;
             }
 
-            // Only attempt VS Code authentication if we have valid configuration
+            // Get VS Code auth token if applicable
+            let accessToken: string | undefined;
             if (hasValidConfig && authFlow === 'vscode_auth') {
                 try {
                     if (vscodeAuthService) {
                         // Check silently if already authenticated, don't prompt during activation
-                        const accessToken = await vscodeAuthService.getAccessToken(false);
+                        accessToken = await vscodeAuthService.getAccessToken(false) || undefined;
                         if (accessToken) {
-                            mcpEnv.BCTB_ACCESS_TOKEN = accessToken;
                             outputChannel.appendLine('[MCP Provider] ✓ Using existing VS Code authentication session');
                         } else {
                             outputChannel.appendLine('[MCP Provider] ℹ️  VS Code authentication not available (sign-in required on first use)');
@@ -674,6 +670,15 @@ export function activate(context: vscode.ExtensionContext) {
             } else if (!hasValidConfig && authFlow === 'vscode_auth') {
                 outputChannel.appendLine('[MCP Provider] ℹ️  Skipping authentication - no valid configuration found');
             }
+
+            // Build env vars using extracted helper (Issue #97: includes BCTB_PROFILE)
+            const mcpEnv = buildMcpEnv({
+                workspacePath,
+                activeProfile: profileManager?.getCurrentProfile(),
+                authFlow,
+                hasValidConfig,
+                accessToken,
+            });
 
             if (useBundled) {
                 // Bundled: Use MCP server bundled with the extension (fallback mode)

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **MCP server ignores profile switch (Issue #97)**: `provideMcpServerDefinitions()` now passes `BCTB_PROFILE` to the MCP server environment, so the server uses the profile selected via "Switch Profile" instead of always falling back to `defaultProfile`. Extracted env-building logic into testable `mcpEnvBuilder.ts` (SRP).
+
+### Added
+- **`mcpEnvBuilder.ts`**: Extracted MCP environment variable construction into a dedicated, testable module with 10 unit tests covering all env var combinations.
+
 ## [3.0.0] - 2026-02-19
 
 ### Changed
