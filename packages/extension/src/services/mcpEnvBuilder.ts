@@ -30,8 +30,8 @@ export interface McpEnvVars {
  * 
  * @returns Record of env vars to pass to the MCP server
  */
-export function buildMcpEnv(params: BuildMcpEnvParams): McpEnvVars {
-    const env: McpEnvVars = {};
+export function buildMcpEnv(params: BuildMcpEnvParams): Record<string, string> {
+    const env: Record<string, string> = {};
 
     if (params.workspacePath) {
         env.BCTB_WORKSPACE_PATH = params.workspacePath;
