@@ -197,13 +197,27 @@ interface AgentRunSummary {
     actions: AgentAction[];
 }
 
+type ActionType = 'teams-webhook' | 'devops-workitem' | 'pipeline-trigger';
+
 interface AgentAction {
     run: number;
-    action: string;                // "teams-webhook" | "devops-workitem" | "pipeline-trigger"
+    type: ActionType;              // unified field name (matches RequestedAction.type)
     timestamp: string;
     status: 'sent' | 'failed';
     details?: Record<string, any>;
 }
+
+// What the LLM outputs in its JSON response (see Output Format in prompts)
+interface RequestedAction {
+    type: ActionType;
+    title: string;
+    message: string;
+    severity: 'high' | 'medium' | 'low';
+    investigationId?: string;      // optional, for pipeline triggers
+}
+
+// The runtime converts RequestedAction → AgentAction by adding run, timestamp, status.
+// The `run` field is set by updateState(), NOT by ActionDispatcher.
 ```
 
 **Bounded memory strategy:**
@@ -215,6 +229,8 @@ interface AgentAction {
 ### 4.3 `runs/<timestamp>.json` — Audit Trail
 
 One file per run, **append-only, never modified**. Full detail for debugging and auditing.
+
+**Cleanup policy:** No automatic cleanup. Run files accumulate in Git. Git’s built-in compression (packfiles) handles this efficiently. Users can prune old run files manually or via a cron job if needed, but this is not a priority for the runtime.
 
 ```typescript
 interface AgentRunLog {
@@ -284,16 +300,26 @@ import { AgentContextManager } from './context.js';
 import { ActionDispatcher } from './actions.js';
 import { buildAgentPrompt, AGENT_SYSTEM_PROMPT, parseAgentOutput } from './prompts.js';
 
+// LLM Provider Interface — decouples runtime from any specific LLM SDK.
+// Azure OpenAI is the default (and only v1) implementation.
+// Future: OpenAI, Anthropic, Ollama — just implement this interface.
+interface LLMProvider {
+    chat(messages: ChatMessage[], options: ChatOptions): Promise<ChatResponse>;
+}
+
 interface AgentRuntimeConfig {
-    // LLM
-    azureOpenAIEndpoint: string;
-    azureOpenAIKey: string;
-    azureOpenAIDeployment: string;   // e.g., "gpt-4o"
+    // LLM — provider abstraction, NOT hardcoded Azure strings
+    llmProvider: LLMProvider;        // injected by CLI command from config + env vars
 
     // Limits
     maxToolCalls: number;            // default: 20 — safety limit
     maxTokens: number;               // default: 4096 — response limit
     contextWindowRuns: number;       // default: 5 — sliding window size
+
+    // Tool scope — controls which MCP tools the agent can use
+    // 'read-only': excludes save_query, switch_profile (default)
+    // 'full': all 13 tools (opt-in per agent)
+    toolScope: 'read-only' | 'full';
 }
 
 export class AgentRuntime {
@@ -321,7 +347,9 @@ export class AgentRuntime {
         const state = this.contextManager.loadState(agentName);
 
         // 2. Build initial messages
-        const tools = this.formatToolsForOpenAI(TOOL_DEFINITIONS);
+        // Filter tools by scope (read-only excludes save_query, switch_profile)
+        const filteredTools = filterToolsByScope(TOOL_DEFINITIONS, this.config.toolScope);
+        const tools = toolDefinitionsToOpenAI(filteredTools);
         const messages = [
             { role: 'system', content: AGENT_SYSTEM_PROMPT },
             { role: 'user', content: buildAgentPrompt(instruction, state) }
@@ -333,7 +361,7 @@ export class AgentRuntime {
         let llmStats = { promptTokens: 0, completionTokens: 0 };
 
         while (totalToolCalls < this.config.maxToolCalls) {
-            const response = await this.callLLM(messages, tools);
+            const response = await this.config.llmProvider.chat(messages, { tools, maxTokens: this.config.maxTokens });
             llmStats.promptTokens += response.usage.promptTokens;
             llmStats.completionTokens += response.usage.completionTokens;
 
@@ -372,19 +400,19 @@ export class AgentRuntime {
                 // LLM is done reasoning — parse final output
                 const output = parseAgentOutput(response.content);
 
-                // 4. Execute actions
-                const executedActions = await this.actionDispatcher.execute(
-                    output.actions,
-                    agentName,
-                    state
+                // 4. Execute actions (Phase 1: log-only stub; Phase 2: real HTTP calls)
+                const executedActions = await this.actionDispatcher.dispatch(
+                    output.actions
                 );
 
-                // 5. Update state
+                // 5. Update state (pass run metadata for AgentRunSummary construction)
                 const updatedState = this.contextManager.updateState(
                     agentName,
                     state,
                     output,
-                    executedActions
+                    executedActions,
+                    Date.now() - startTime,                    // runDurationMs
+                    toolCallLog.map(tc => tc.tool)             // toolCallNames
                 );
 
                 // 6. Save run log
@@ -400,7 +428,7 @@ export class AgentRuntime {
                         runCount: state.runCount
                     },
                     llm: {
-                        model: this.config.azureOpenAIDeployment,
+                        model: 'llm-provider',             // provider name — no longer hardcoded
                         promptTokens: llmStats.promptTokens,
                         completionTokens: llmStats.completionTokens,
                         totalTokens: llmStats.promptTokens + llmStats.completionTokens,
@@ -424,6 +452,12 @@ export class AgentRuntime {
         throw new Error(`Agent ${agentName} exceeded max tool calls (${this.config.maxToolCalls})`);
     }
 }
+
+// --- Error handling notes ---
+// If the LLM returns content but it's not valid JSON (refusal, hallucination, etc.):
+//   parseAgentOutput throws → the run fails → no state is written → run log is NOT saved.
+//   The CLI should catch this, log the error, and exit non-zero so the pipeline can retry.
+//   Future: add retry logic (up to 2 retries with the same messages + a "please output valid JSON" nudge).
 ```
 
 ### 5.2 Module: `src/agent/context.ts`
@@ -496,12 +530,17 @@ export class AgentContextManager {
         agentName: string,
         previousState: AgentState,
         output: AgentOutput,
-        executedActions: AgentAction[]
+        executedActions: AgentAction[],
+        runDurationMs: number,
+        toolCallNames: string[]
     ): AgentState {
-        // 1. Update summary (LLM-written)
+        // 1. Update summary (LLM-written — output.summary replaces previous)
         // 2. Update active/resolved issues based on output
-        // 3. Push new run to recentRuns, trim to window size
-        // 4. Increment runCount, update lastRun
+        // 3. Build AgentRunSummary from output + executedActions + runDurationMs + toolCallNames
+        // 4. Push new run to recentRuns, trim to window size
+        // 5. Increment runCount, update lastRun
+        // 6. Set `run` field on executedActions to the new runId
+        // 7. Prune resolvedIssues past TTL
         // See Section 7 for compaction logic
     }
 
@@ -547,10 +586,13 @@ export class ActionDispatcher {
 
     constructor(config: ActionConfig) { ... }
 
-    async execute(
-        requestedActions: RequestedAction[],
-        agentName: string,
-        state: AgentState
+    /**
+     * Dispatch requested actions.
+     * Returns AgentAction[] WITHOUT the `run` field — that's set by updateState().
+     * Phase 1: log-only stub (no HTTP calls). Phase 2: real implementations.
+     */
+    async dispatch(
+        requestedActions: RequestedAction[]
     ): Promise<AgentAction[]> {
         const executed: AgentAction[] = [];
 
@@ -558,44 +600,57 @@ export class ActionDispatcher {
             try {
                 switch (action.type) {
                     case 'teams-webhook':
-                        await this.sendTeamsNotification(action, agentName);
+                        await this.sendTeamsNotification(action);
                         break;
                     case 'devops-workitem':
-                        await this.createDevOpsWorkItem(action, agentName);
+                        await this.createDevOpsWorkItem(action);
                         break;
                     case 'pipeline-trigger':
-                        await this.triggerPipeline(action, agentName);
+                        await this.triggerPipeline(action);
                         break;
                 }
-                executed.push({ ...action, status: 'sent', timestamp: new Date().toISOString() });
+                executed.push({ run: 0, type: action.type, status: 'sent', timestamp: new Date().toISOString() });
             } catch (error) {
-                executed.push({ ...action, status: 'failed', timestamp: new Date().toISOString() });
+                executed.push({ run: 0, type: action.type, status: 'failed', timestamp: new Date().toISOString() });
             }
         }
 
         return executed;
     }
 
-    private async sendTeamsNotification(action: RequestedAction, agentName: string): Promise<void> {
-        // POST to Teams Incoming Webhook URL
-        // Format: Adaptive Card with agent name, findings, severity
+    private async sendTeamsNotification(action: RequestedAction): Promise<void> {
+        // POST to Teams Incoming Webhook URL — Adaptive Card format
         const url = this.config['teams-webhook']?.url;
         if (!url) throw new Error('Teams webhook URL not configured');
+
+        const severityColor = action.severity === 'high' ? 'attention'
+            : action.severity === 'medium' ? 'warning' : 'good';
 
         await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                '@type': 'MessageCard',
-                summary: `Agent: ${agentName}`,
-                themeColor: action.severity === 'high' ? 'FF0000' : 'FFA500',
-                title: action.title,
-                text: action.message
+                type: 'message',
+                attachments: [{
+                    contentType: 'application/vnd.microsoft.card.adaptive',
+                    content: {
+                        '$schema': 'http://adaptivecards.io/schemas/adaptive-card.json',
+                        type: 'AdaptiveCard',
+                        version: '1.4',
+                        body: [
+                            { type: 'TextBlock', text: action.title, weight: 'Bolder', size: 'Medium', color: severityColor },
+                            { type: 'TextBlock', text: action.message, wrap: true },
+                            { type: 'FactSet', facts: [
+                                { title: 'Severity', value: action.severity },
+                            ]}
+                        ]
+                    }
+                }]
             })
         });
     }
 
-    private async createDevOpsWorkItem(action: RequestedAction, agentName: string): Promise<void> {
+    private async createDevOpsWorkItem(action: RequestedAction): Promise<void> {
         // POST to Azure DevOps REST API
         // POST https://dev.azure.com/{org}/{project}/_apis/wit/workitems/${type}?api-version=7.0
         const config = this.config['devops-workitem'];
@@ -618,7 +673,7 @@ export class ActionDispatcher {
         });
     }
 
-    private async triggerPipeline(action: RequestedAction, agentName: string): Promise<void> {
+    private async triggerPipeline(action: RequestedAction): Promise<void> {
         // POST to Azure DevOps Pipeline Run API
         const config = this.config['pipeline-trigger'];
         if (!config) throw new Error('Pipeline trigger config not set');
@@ -784,14 +839,16 @@ Creates:
 ### 6.2 `agent run`
 
 ```bash
-# Single pass (for pipelines)
+# Single pass (for pipelines) — Phase 1 MVP
 bctb-mcp agent run appsource-validation --once
 
-# Continuous (for containers/services)
-bctb-mcp agent run appsource-validation --interval 60m
-
-# Run all active agents
+# Run all active agents — Phase 1 MVP
 bctb-mcp agent run-all --once
+
+# Continuous (for containers/services) — Phase 3+ (deferred)
+# bctb-mcp agent run appsource-validation --interval 60m
+# Requires: sleep loop, graceful shutdown (SIGTERM/SIGINT), signal handling.
+# Not needed for pipeline-based usage (the scheduler handles repetition).
 ```
 
 ### 6.3 `agent list`
@@ -822,13 +879,15 @@ Run History (appsource-validation):
   #1  2026-02-24T10:00Z  52s  3 tools  "Initial scan. Found 2 issue patterns."
 ```
 
-### 6.5 `agent edit`
+### 6.5 `agent edit` (Phase 3+)
 
 ```bash
 bctb-mcp agent edit appsource-validation
 ```
 
 Opens `instruction.md` in `$EDITOR`. Alternatively, users just edit the file directly in VS Code.
+
+> **Deferred to Phase 3+.** No existing CLI commands open editors. For Phase 1-2, users edit instruction.md directly in VS Code or any text editor.
 
 ### 6.6 `agent pause` / `agent resume`
 
@@ -892,7 +951,8 @@ Issues in `resolvedIssues` are kept for 30 days (so the agent can reference rece
             "maxToolCalls": 20,
             "maxTokens": 4096,
             "contextWindowRuns": 5,
-            "resolvedIssueTTLDays": 30
+            "resolvedIssueTTLDays": 30,
+            "toolScope": "read-only"
         },
         "actions": {
             "teams-webhook": {
@@ -930,6 +990,69 @@ Issues in `resolvedIssues` are kept for 30 days (so the agent can reference rece
 | `DEVOPS_ORG_URL` | Azure DevOps org URL (override) |
 
 Environment variables override config file values (same pattern as existing config).
+
+### 8.3 Config Loading Strategy for Agent CLI
+
+**Problem:** `loadConfigFromFile()` returns `MCPConfig` which does NOT include the `agents` section. The agent CLI needs both the MCPConfig (for ToolHandlers initialization) and the agents config (LLM settings, action config, defaults).
+
+**Solution:** The agent CLI reads the raw JSON file separately to extract the `agents` section, then uses the existing `loadConfigFromFile()` for MCPConfig. This avoids modifying the core MCPConfig interface.
+
+```typescript
+// In CLI agent commands:
+
+// 1. Load MCPConfig via existing function (for ToolHandlers initialization)
+const mcpConfig = loadConfigFromFile(options.config, options.profile);
+
+// 2. Load raw JSON to extract agents section (NOT part of MCPConfig)
+const rawConfig = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf-8'));
+const agentsConfig: AgentConfigSection = rawConfig.agents;
+if (!agentsConfig?.llm) {
+    throw new Error('No agents.llm section in config. See: bctb-mcp init');
+}
+
+// 3. Construct LLM provider from agents config + env vars
+const llmProvider = new AzureOpenAIProvider({
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT || agentsConfig.llm.endpoint,
+    apiKey: process.env.AZURE_OPENAI_KEY || '',            // MUST be env var
+    deployment: process.env.AZURE_OPENAI_DEPLOYMENT || agentsConfig.llm.deployment,
+    apiVersion: agentsConfig.llm.apiVersion || '2024-10-21'
+});
+
+// 4. Build AgentRuntimeConfig from agents.defaults + overrides
+const runtimeConfig: AgentRuntimeConfig = {
+    llmProvider,
+    maxToolCalls: agentsConfig.defaults?.maxToolCalls ?? 20,
+    maxTokens: agentsConfig.defaults?.maxTokens ?? 4096,
+    contextWindowRuns: agentsConfig.defaults?.contextWindowRuns ?? 5,
+    toolScope: agentsConfig.defaults?.toolScope ?? 'read-only'
+};
+
+// 5. Initialize ToolHandlers and services from MCPConfig (existing code, unchanged)
+const services = initializeServices(mcpConfig, true);
+const toolHandlers = new ToolHandlers(mcpConfig, services, true);
+
+// 6. Create context manager and action dispatcher
+const contextManager = new AgentContextManager(mcpConfig.workspacePath, runtimeConfig.contextWindowRuns);
+const actionDispatcher = new ActionDispatcher(agentsConfig.actions ?? {});
+
+// 7. Run agent
+const runtime = new AgentRuntime(toolHandlers, contextManager, actionDispatcher, runtimeConfig);
+await runtime.run(agentName);
+```
+
+**Key design points:**
+- MCPConfig is NOT modified — no breaking changes to existing config loading.
+- The `agents` section is a separate concern, loaded from raw JSON only by agent CLI commands.
+- Secrets (API key, PAT) come from environment variables, never from the config file.
+- The same `loadConfigFromFile` handles profile resolution, so `--profile` works naturally for the MCPConfig part.
+
+### 8.4 Agent State and Profiles
+
+**Question:** If `--profile` changes the MCPConfig (different App Insights, different tenant), should agent state be separate per profile?
+
+**Answer:** Agent state is per-agent-folder, NOT per-profile. The agent's `instruction.md` defines what it monitors, and the state tracks findings. If you need to monitor different environments separately, create separate agents (e.g., `performance-prod`, `performance-staging`). This is simpler and more explicit than implicit profile-scoped state.
+
+The `--profile` flag on `agent run` selects which MCPConfig (which App Insights/tenant connection) to use — the agent folder stays the same. If the same agent folder is run with different profiles, findings will be mixed in the same state.json, which may or may not be desirable. The recommendation is: **one agent per environment**.
 
 ---
 
@@ -1902,9 +2025,9 @@ Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP
 
 ---
 
-## 17. Open Questions
+## 17. Open Questions — RESOLVED
 
-1. **Should agents be able to call each other?** (e.g., AppSource agent triggers post-deployment agent). Recommendation: Not in v1.
-2. **Should the VS Code extension have agent management UI?** Recommendation: CLI-first, extension later.
-3. **Should agents support multiple profiles?** (e.g., run the same instruction across all profiles). Recommendation: Yes, via `--profile` flag on `agent run`.
-4. **Compaction strategy**: Should compaction happen as part of the agent's LLM call, or as a separate post-processing step? Recommendation: Part of the LLM call (simpler, the LLM already sees all the context).
+1. **Should agents be able to call each other?** ~~Recommendation: Not in v1.~~ **CONFIRMED: Not in v1.**
+2. **Should the VS Code extension have agent management UI?** ~~Recommendation: CLI-first, extension later.~~ **CONFIRMED: CLI-first, extension later.**
+3. **Should agents support multiple profiles?** ~~Recommendation: Yes, via `--profile` flag on `agent run`.~~ **CONFIRMED: Yes, via `--profile` flag. See Section 8.4 for state-vs-profile scoping.** One agent per environment is recommended.
+4. **Compaction strategy**: ~~Recommendation: Part of the LLM call.~~ **CONFIRMED: Part of the LLM call** (the LLM already sees the previous summary + new findings and writes an updated summary).

@@ -1563,3 +1563,9 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-24** - Patch release Extension v3.0.2 [Entry: f71bbc02-74ab-437a-a4a8-68ab0550b58e]
   - **Why:** CI failed on v3.0.1 due to TS2322 type mismatch in mcpEnvBuilder.ts; fix was on main but not in a release.
   - **How:** Bumped extension to 3.0.2, updated CHANGELOG, tagged v3.0.2, pushed to trigger CI/CD.
+- **2026-02-24** — Design doc review: identified 10 gaps for implementation readiness [Entry: 30b18ca1-df9d-4392-9e3d-4bad27b1c277]
+  - **Why:** User asked to verify if design doc contains everything needed to implement.
+  - **How:** Read all 1911 lines, cross-referenced with existing codebase (toolHandlers, config, CLI). Identified 10 gaps (3 high, 4 medium, 3 low), reported findings with resolution recommendations.
+- **2026-02-24** — Fixed 10 design doc gaps for implementation readiness [Entry: f42f44ec-497c-4aee-87f3-20b21cd343d6]
+  - **Why:** Design review identified type mismatches, missing params, stale code examples, and missing config loading strategy.
+  - **How:** Applied 14 edits to Design.md: unified AgentAction.type field, added LLM provider abstraction to RuntimeConfig, fixed Adaptive Cards code, expanded updateState signature, added Section 8.3 (config loading strategy) and 8.4 (profile scoping), deferred --interval and agent edit, added error handling notes, confirmed open questions.
