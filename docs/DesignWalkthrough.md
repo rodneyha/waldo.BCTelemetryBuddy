@@ -1500,3 +1500,54 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-19** - Display MCP server version on startup [Entry: 6264cdd3-67d1-4f30-96b6-a8c41d1caf39]
   - **Why:** Users should see which version of the MCP server is running when it starts up, for diagnostics and troubleshooting.
   - **How:** Added VERSION to startup log in both HTTP mode (server.ts startHTTP) and stdio mode (mcpSdkServer.ts startSdkStdioServer). HTTP shows 'MCP Server vX.Y.Z listening on port N', stdio shows 'BC Telemetry Buddy MCP Server vX.Y.Z starting (stdio mode)...'.
+- **2026-02-24** — Reviewed Agentic Telemetry Incident Manager proposal [Entry: 470a0f66-bf12-453b-a381-7177370df777]
+  - **Why:** Evaluate Copilot Studio-based autonomous monitoring architecture for BC telemetry, answer validation questions, and assess fit with existing BCTelemetryBuddy MCP tools.
+  - **How:** Reviewed all 9 validation questions; recommended reusing existing MCP tools via Custom Connector, pluggable state store, circuit breakers for follow-up loop, API throttling mitigation, and phased implementation plan.
+- **2026-02-24** — Proposed 4 alternative architectures for Telemetry Incident Manager [Entry: bb6b2948-35c3-42de-9651-366266cbe253]
+  - **Why:** Evaluate lighter-weight alternatives to Copilot Studio that maximize reuse of existing BCTelemetryBuddy MCP code and minimize licensing/infrastructure cost.
+  - **How:** Proposed MCP-native Watchdog (recommended), Azure Functions + Durable Functions, GitHub Actions scheduled workflows, and Azure Logic Apps Consumption. Provided comparison matrix across cost, code reuse, complexity, and time to build.
+- **2026-02-24** — Designed investigation persistence and DevOps pipeline integration for MCP Watchdog [Entry: 54a187ed-ee5d-484a-85d5-0598b5ccd824]
+  - **Why:** User asked how Alternative 1 (MCP Watchdog) would persist investigations and integrate with DevOps pipelines for automation.
+  - **How:** Designed file-based investigation model (JSON files in investigations/ folder, git-tracked), three pipeline integration patterns (pipeline step, pipeline trigger, CLI quality gate), and a 6-stage progression path from basic CLI to LLM-enriched monitoring.
+- **2026-02-24** — Redesigned monitor as truly agentic prompt-driven autonomous agents [Entry: e0d3d6d4-b3d9-469a-949c-5ae2cc697419]
+  - **Why:** User clarified the system must be truly agentic — each agent is defined by a natural language instruction, not JSON rules. Follow-up is the same instruction plus accumulated context. Behavior changes by editing the prompt.
+  - **How:** Designed instruction-based agent model (agents/ folder with instruction.md + context.json), ReAct loop runtime (~600 LOC new) that calls existing MCP ToolHandlers via LLM reasoning, bounded context with sliding window + compaction, CLI surface (agent start/run/list/history/edit), and pipeline integration via --once flag.
+- **2026-02-24** — Clarified build-vs-buy breakdown and scheduler options [Entry: ad12428c-e87c-46fd-98f5-70391c80feeb]
+  - **Why:** User asked for clarity on what needs to be coded vs what existing services handle the scheduling/automation.
+  - **How:** Separated the system into three layers: (1) ~400 LOC new code (ReAct loop, context persistence, action dispatch), (2) existing MCP ToolHandlers unchanged, (3) scheduler = any cron service (Azure DevOps Pipeline, Azure Functions Timer, Container App, GitHub Actions). Documented cost and complexity of each scheduler option.
+- **2026-02-24** — Designed agent persistence model and pipeline templates [Entry: 87537890-2ae4-4bbf-9058-83455f42a490]
+  - **Why:** User confirmed pipeline approach and asked for concrete details on what gets saved, in what format, and where — to enable follow-up between runs.
+  - **How:** Designed 3-file persistence model per agent (instruction.md for prompt, state.json for rolling context with LLM-written summary + activeIssues + recentRuns sliding window, runs/*.json for audit trail). State flows through Git commits — pipeline checks out repo, agent reads/writes state.json, pipeline commits back. Provided complete GitHub Actions and Azure DevOps Pipeline YAML templates. Templates would ship in packages/mcp/templates/.
+- **2026-02-24** — Reviewed PR #96 (config filepath for profile switching) [Entry: aea87f30-116a-43d4-8c1a-e4ba275ce297]
+  - **Why:** User asked to verify if PR #96 is a real bug and a valid fix.
+  - **How:** Analyzed the diff, confirmed hardcoded config path in switchProfile/listProfiles is a real bug when --config or home-dir discovery is used. Fix is correct; noted detectInitialProfile has the same unfixed bug.
+- **2026-02-24** — PR #96 approval recommendation [Entry: 663d46c2-bf02-4d48-8efe-4f703a5a3bc7]
+  - **Why:** User asked whether to approve PR #96.
+  - **How:** Confirmed fix is correct and safe; recommended requesting one additional fix for detectInitialProfile() which has the same bug.
+- **2026-02-24** — Drafted PR #96 review comment [Entry: 00ca6457-adf1-43bc-9821-40011703d988]
+  - **Why:** User wanted a ready-to-paste PR comment with approval and the detectInitialProfile fix request.
+  - **How:** Wrote a markdown comment approving the fix, requesting the same one-line change for detectInitialProfile().
+- **2026-02-24** — PR #96 approved, detectInitialProfile deferred [Entry: 96803662-0eb4-4281-9151-8d21b3d3ac41]
+  - **Why:** User decided to approve PR #96 as-is and fix detectInitialProfile() separately later.
+  - **How:** No code changes — acknowledged decision.
+- **2026-02-24** — Created GitHub issue #98 and full design document for agentic monitoring [Entry: 6461e817-d305-4010-b9d9-6686cff1d43a]
+  - **Why:** User requested a formal GitHub issue and comprehensive design document to serve as the implementation blueprint for the agentic autonomous telemetry monitoring feature.
+  - **How:** Created GitHub issue #98 with acceptance criteria. Wrote 16-section design document at Instructions/4. Agentic Monitoring/Design.md covering architecture, file specs (instruction.md, state.json, runs/*.json), agent runtime (ReAct loop), context manager, action dispatcher, CLI commands, prompts, pipeline templates (GitHub Actions + Azure DevOps), example agent instructions, testing strategy, configuration, implementation phases, and cost estimates. Committed and pushed referencing #98.
+- **2026-02-24** — Post-merge: fix detectInitialProfile, update CHANGELOG, commend author [Entry: 39dad1ef-e000-4471-bff7-cbbccc18a86f]
+  - **Why:** PR #96 merged but detectInitialProfile() still had the hardcoded config path bug. User wanted changelog update and author recognition.
+  - **How:** Applied same configFilePath fallback to detectInitialProfile() in server.ts. Updated MCP CHANGELOG [Unreleased] with the fix. Posted commendation comment on PR #96 via gh CLI.
+- **2026-02-24** — Added 8 configFilePath tests + committed [Entry: ed6efaf8-0c92-485c-a199-bb9d7ac893d2]
+  - **Why:** Verify the configFilePath fix works for detectInitialProfile, switchProfile, and listProfiles when config is outside workspacePath.
+  - **How:** Added test section 6 to profile-switching.test.ts with 8 tests covering non-default config location. Fixed detectInitialProfile in server.ts. All 329 tests pass. Committed as cb867ee.
+- **2026-02-24** — Verified issue #97 is NOT fixed by PR #96 [Entry: e5191f3c-eec3-4d73-b9a2-62b31afd0cdc]
+  - **Why:** User asked if the configFilePath fix also resolved issue #97 (MCP server ignores profile switch).
+  - **How:** Reviewed extension.ts provideMcpServerDefinitions() — confirmed BCTB_PROFILE is never set in mcpEnv. This is a separate extension-side bug unrelated to the config file path fix.
+- **2026-02-24** - Research: ProfileManager, extension.ts profile handling, test patterns, MCP restart gap [Entry: 9476b92b-7746-4b7d-a20b-d868394c691e]
+  - **Why:** User needed full context on profile switching architecture before implementing issue #97 fix.
+  - **How:** Read profileManager.ts, extension.ts (declaration, switchProfileCommand, provideMcpServerDefinitions), profileStatusBar.ts, and extension.test.ts/mcpClient.test.ts for test patterns. Confirmed BCTB_PROFILE is never set in mcpEnv and no MCP server refresh occurs on profile switch.
+- **2026-02-24** — Fixed issue #97: BCTB_PROFILE not passed to MCP server [Entry: ea9a5ab4-93e7-40a8-9aea-8606642a8457]
+  - **Why:** provideMcpServerDefinitions() never included BCTB_PROFILE in the MCP server env, so the MCP process always used defaultProfile.
+  - **How:** Extracted buildMcpEnv() into services/mcpEnvBuilder.ts (SRP). Added 10 tests proving the bug and verifying the fix. Wired buildMcpEnv into extension.ts. All 346 extension tests + 329 MCP tests pass. Build succeeds.
+- **2026-02-24** — Committed issue #97 fix [Entry: ddeebb90-1cb5-49ac-8c62-cb6b04c91a5c]
+  - **Why:** User requested commit linked to issue #97.
+  - **How:** Committed as ec3a0d0 with 'fixes #97' in message for auto-close on push.

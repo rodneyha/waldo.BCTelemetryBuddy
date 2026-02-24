@@ -2611,3 +2611,71 @@ Change instructions an business logic to do this."
 > "When the MCP server is started - make sure the version of the MCP Server is showed in the output/verbose/whatever..."
 
 ---
+### Entry ID: 470a0f66-bf12-453b-a381-7177370df777 — 2026-02-24 21:11
+> "Review the Agentic Telemetry Incident Manager proposal — evaluate architecture (Copilot Studio, Dataverse, closed-loop workflow), answer 9 validation questions, identify gaps, and recommend how to leverage existing BCTelemetryBuddy MCP tools."
+
+---
+### Entry ID: bb6b2948-35c3-42de-9651-366266cbe253 — 2026-02-24 21:43
+> "What about alternatives — would you have any suggestions? (for the Agentic Telemetry Incident Manager architecture)"
+
+---
+### Entry ID: 54a187ed-ee5d-484a-85d5-0598b5ccd824 — 2026-02-24 21:47
+> "If I'd go with Alternative 1 — would I have options to build on top of this for DevOps pipelines as an automator? For the latter — how would it be able to save investigations, and follow up and such?"
+
+---
+### Entry ID: e0d3d6d4-b3d9-469a-949c-5ae2cc697419 — 2026-02-24 21:50
+> "It needs to be truly agentic — I'd have to be able to change the follow up with a prompt, and it would agentically go from there. Start an autonomous agent/workflow for AppSource validation and nothing more. Another for performance. Starting one should be a prompt/instruction. The follow up is the same instruction but with extra context from previous outputs."
+
+---
+### Entry ID: ad12428c-e87c-46fd-98f5-70391c80feeb — 2026-02-24 21:53
+> "I'm a bit lost — what would have to be developed, what do we use as the service that automates it?"
+
+---
+### Entry ID: 87537890-2ae4-4bbf-9058-83455f42a490 — 2026-02-24 21:56
+> "Pipeline makes sense — I would want to support (or have examples/templates) for GitHub Actions and Azure DevOps Pipelines. Next: Since it would have to act on previous output — how and what would we save where?"
+
+---
+### Entry ID: aea87f30-116a-43d4-8c1a-e4ba275ce297 — 2026-02-24 22:04
+> "Review PR #96 from StefanMaron: fix config filepath for profile switching - verify if it's a real bug and a real fix"
+
+---
+### Entry ID: 663d46c2-bf02-4d48-8efe-4f703a5a3bc7 — 2026-02-24 22:06
+> "So I can approve the pullrequest?"
+
+---
+### Entry ID: 00ca6457-adf1-43bc-9821-40011703d988 — 2026-02-24 22:07
+> "Can you prep a comment that I can add in the PR?"
+
+---
+### Entry ID: 96803662-0eb4-4281-9151-8d21b3d3ac41 — 2026-02-24 22:08
+> "You know what, I'll approve the PR, and then add that one line here, when I get to that."
+
+---
+### Entry ID: 6461e817-d305-4010-b9d9-6686cff1d43a — 2026-02-24 22:09
+> "Create a GitHub issue for the agentic monitoring feature. Create an elaborate design document in Instructions. Reference the GitHub issue. Commit under the GitHub issue."
+
+---
+### Entry ID: 39dad1ef-e000-4471-bff7-cbbccc18a86f — 2026-02-24 22:17
+> "I did the merge! now verify, perform the outstanding changes, update changelog, commend the author!"
+
+---
+### Entry ID: ed6efaf8-0c92-485c-a199-bb9d7ac893d2 — 2026-02-24 22:21
+> "Create tests that verify the solution, run all tests, and commit!"
+
+---
+### Entry ID: e5191f3c-eec3-4d73-b9a2-62b31afd0cdc — 2026-02-24 22:22
+> "Could you verify if this fix also fixed this: https://github.com/waldo1001/waldo.BCTelemetryBuddy/issues/97"
+
+---
+### Entry ID: 9476b92b-7746-4b7d-a20b-d868394c691e - 2026-02-24 22:25
+> "Research the following in the workspace: 1) Find ProfileManager class - key methods, 2) How profileManager is declared in extension.ts, 3) Test patterns in extension tests, 4) switchProfile command code, 5) Any mechanism for restarting MCP server after profile switch"
+
+---
+### Entry ID: ea9a5ab4-93e7-40a8-9aea-8606642a8457 — 2026-02-24 22:28
+> "Fix issue #97: MCP server ignores profile switch. Write failing test first, then fix, then verify."
+
+---
+### Entry ID: ddeebb90-1cb5-49ac-8c62-cb6b04c91a5c — 2026-02-24 22:31
+> "Commit under the issue"
+
+---

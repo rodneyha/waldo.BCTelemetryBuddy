@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-02-24
+
 ### Fixed
 - **Config file path for profile operations**: `switchProfile()`, `listProfiles()`, and `detectInitialProfile()` now use the stored `configFilePath` instead of hardcoding `path.join(workspacePath, '.bctb-config.json')`, fixing failures when config is loaded via `--config` or from the home directory (PR #96 by @StefanMaron, plus follow-up fix for `detectInitialProfile`)
+
+### Added
+- **Version display on startup**: MCP server now logs its version number on startup for easier diagnostics
+- **8 new tests**: configFilePath fix coverage for `detectInitialProfile`, `switchProfile`, and `listProfiles` with external config paths
 
 ## [3.0.0] - 2026-02-19
 
