@@ -1569,3 +1569,9 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-24** — Fixed 10 design doc gaps for implementation readiness [Entry: f42f44ec-497c-4aee-87f3-20b21cd343d6]
   - **Why:** Design review identified type mismatches, missing params, stale code examples, and missing config loading strategy.
   - **How:** Applied 14 edits to Design.md: unified AgentAction.type field, added LLM provider abstraction to RuntimeConfig, fixed Adaptive Cards code, expanded updateState signature, added Section 8.3 (config loading strategy) and 8.4 (profile scoping), deferred --interval and agent edit, added error handling notes, confirmed open questions.
+- **2026-02-25** — Design.md: replace devops-workitem with email/webhook action types + re-alerting cooldown [Entry: abeeaf51-ce91-4bb1-a194-77ed968a9f5e]
+  - **Why:** User decided to remove devops-workitem and add email-smtp, email-graph, generic-webhook; plus LLM-decided cooldown-based re-alerting
+  - **How:** Updated 20+ locations in Design.md: ActionConfig, ActionDispatcher (3 new methods), AGENT_SYSTEM_PROMPT (Available Action Types + Re-alerting section), config JSON, env vars, pipeline YAMLs, Pipeline README, all 4 agent templates, overview table, testing, dependencies, phases, costs, and security sections
+- **2026-02-25** --- Design.md: replace devops-workitem with email/webhook + re-alerting cooldown [Entry: 55407a18-955b-41d7-8abc-8a2c12e7e2a6]
+  - **Why:** User decided to remove devops-workitem and add email-smtp, email-graph, generic-webhook; plus LLM-decided cooldown-based re-alerting
+  - **How:** Updated 20+ locations in Design.md across all sections (interfaces, ActionDispatcher, system prompt, config, pipelines, templates, testing, deps, security)

@@ -140,7 +140,7 @@ Check for validation failures (RT0005 events with error status),
 categorize by extension name and failure type.
 
 If failures persist across 3 consecutive checks, post to the Teams channel.
-If failures persist across 6 consecutive checks, create an Azure DevOps work item.
+If failures persist across 6 consecutive checks, send an email to the dev lead.
 
 Focus on the last 2 hours of data each run.
 Ignore test tenants (any tenant with "test" or "sandbox" in the company name).
@@ -197,7 +197,12 @@ interface AgentRunSummary {
     actions: AgentAction[];
 }
 
-type ActionType = 'teams-webhook' | 'devops-workitem' | 'pipeline-trigger';
+type ActionType =
+    | 'teams-webhook'
+    | 'email-smtp'
+    | 'email-graph'
+    | 'generic-webhook'
+    | 'pipeline-trigger';
 
 interface AgentAction {
     run: number;
@@ -213,6 +218,8 @@ interface RequestedAction {
     title: string;
     message: string;
     severity: 'high' | 'medium' | 'low';
+    recipients?: string[];         // optional, for email actions (overrides config defaultTo)
+    webhookPayload?: Record<string, any>; // optional, for generic-webhook (custom body)
     investigationId?: string;      // optional, for pipeline triggers
 }
 
@@ -566,18 +573,39 @@ Executes external actions requested by the agent. Each action type is a simple H
 
 ```typescript
 export interface ActionConfig {
-    'teams-webhook'?: { url: string };
-    'devops-workitem'?: {
-        orgUrl: string;      // e.g., "https://dev.azure.com/contoso"
-        project: string;
-        pat: string;
-        workItemType?: string; // default: "Bug"
+    'teams-webhook'?: {
+        url: string;               // Teams Incoming Webhook URL
+    };
+    'email-smtp'?: {
+        host: string;              // SMTP relay host (e.g., "smtp.sendgrid.net")
+        port: number;              // typically 587 (STARTTLS) or 465 (SSL)
+        secure: boolean;           // true for port 465, false for 587 with STARTTLS
+        auth: {
+            user: string;          // SMTP username
+            pass: string;          // set via SMTP_PASSWORD env var — never in config
+        };
+        from: string;              // sender address (e.g., "bctb-agent@contoso.com")
+        defaultTo: string[];       // fallback recipients if LLM doesn't specify recipients
+    };
+    'email-graph'?: {
+        tenantId: string;          // Azure AD tenant (can reuse top-level tenantId)
+        clientId: string;          // App Registration with Mail.Send permission
+        from: string;              // sender mailbox (e.g., "bctb-agent@contoso.com")
+        defaultTo: string[];       // fallback recipients if LLM doesn't specify recipients
+        // clientSecret set via GRAPH_CLIENT_SECRET env var — never in config
+    };
+    'generic-webhook'?: {
+        url: string;               // target URL (Slack, PagerDuty, custom API, etc.)
+        method?: string;           // HTTP method, default: POST
+        headers?: Record<string, string>; // custom headers (e.g., auth tokens)
+        // Body is either RequestedAction.webhookPayload (LLM-provided) or default:
+        // { title, message, severity, timestamp, agentName }
     };
     'pipeline-trigger'?: {
-        orgUrl: string;
+        orgUrl: string;            // e.g., "https://dev.azure.com/contoso"
         project: string;
         pipelineId: number;
-        pat: string;
+        pat: string;               // set via DEVOPS_PAT env var
     };
 }
 
@@ -602,8 +630,14 @@ export class ActionDispatcher {
                     case 'teams-webhook':
                         await this.sendTeamsNotification(action);
                         break;
-                    case 'devops-workitem':
-                        await this.createDevOpsWorkItem(action);
+                    case 'email-smtp':
+                        await this.sendEmailSmtp(action);
+                        break;
+                    case 'email-graph':
+                        await this.sendEmailGraph(action);
+                        break;
+                    case 'generic-webhook':
+                        await this.sendGenericWebhook(action);
                         break;
                     case 'pipeline-trigger':
                         await this.triggerPipeline(action);
@@ -650,27 +684,109 @@ export class ActionDispatcher {
         });
     }
 
-    private async createDevOpsWorkItem(action: RequestedAction): Promise<void> {
-        // POST to Azure DevOps REST API
-        // POST https://dev.azure.com/{org}/{project}/_apis/wit/workitems/${type}?api-version=7.0
-        const config = this.config['devops-workitem'];
-        if (!config) throw new Error('DevOps work item config not set');
+    private async sendEmailSmtp(action: RequestedAction): Promise<void> {
+        // Uses nodemailer to send via SMTP relay (SendGrid, O365 SMTP, etc.)
+        const config = this.config['email-smtp'];
+        if (!config) throw new Error('SMTP email config not set');
 
-        const type = config.workItemType || 'Bug';
-        const url = `${config.orgUrl}/${config.project}/_apis/wit/workitems/$${type}?api-version=7.0`;
+        const nodemailer = await import('nodemailer');
+        const transporter = nodemailer.createTransport({
+            host: config.host,
+            port: config.port,
+            secure: config.secure,
+            auth: { user: config.auth.user, pass: config.auth.pass }
+        });
 
-        await fetch(url, {
+        const recipients = action.recipients?.length ? action.recipients : config.defaultTo;
+        if (!recipients?.length) throw new Error('No email recipients specified');
+
+        const severityBadge = action.severity === 'high' ? '🔴'
+            : action.severity === 'medium' ? '🟡' : '🟢';
+
+        await transporter.sendMail({
+            from: config.from,
+            to: recipients.join(', '),
+            subject: `${severityBadge} BCTB Agent: ${action.title}`,
+            html: [
+                `<h2>${severityBadge} ${action.title}</h2>`,
+                `<p>${action.message}</p>`,
+                `<p><strong>Severity:</strong> ${action.severity}</p>`,
+                `<hr><p><em>Sent by BC Telemetry Buddy agent</em></p>`
+            ].join('\n')
+        });
+    }
+
+    private async sendEmailGraph(action: RequestedAction): Promise<void> {
+        // Uses Microsoft Graph API with client_credentials to send email.
+        // Requires Mail.Send application permission on the App Registration.
+        const config = this.config['email-graph'];
+        if (!config) throw new Error('Graph email config not set');
+
+        const clientSecret = process.env.GRAPH_CLIENT_SECRET;
+        if (!clientSecret) throw new Error('GRAPH_CLIENT_SECRET env var not set');
+
+        // 1. Acquire token via client_credentials grant
+        const tokenUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
+        const tokenResponse = await fetch(tokenUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: config.clientId,
+                client_secret: clientSecret,
+                scope: 'https://graph.microsoft.com/.default',
+                grant_type: 'client_credentials'
+            })
+        });
+        const { access_token } = await tokenResponse.json();
+
+        // 2. Send mail via Graph API
+        const recipients = action.recipients?.length ? action.recipients : config.defaultTo;
+        if (!recipients?.length) throw new Error('No email recipients specified');
+
+        const severityBadge = action.severity === 'high' ? '🔴'
+            : action.severity === 'medium' ? '🟡' : '🟢';
+
+        await fetch(`https://graph.microsoft.com/v1.0/users/${config.from}/sendMail`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json-patch+json',
-                'Authorization': `Basic ${Buffer.from(`:${config.pat}`).toString('base64')}`
+                'Authorization': `Bearer ${access_token}`,
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify([
-                { op: 'add', path: '/fields/System.Title', value: action.title },
-                { op: 'add', path: '/fields/System.Description', value: action.message },
-                { op: 'add', path: '/fields/System.Tags', value: `bctb-agent;${agentName}` }
-            ])
+            body: JSON.stringify({
+                message: {
+                    subject: `${severityBadge} BCTB Agent: ${action.title}`,
+                    body: {
+                        contentType: 'HTML',
+                        content: `<h2>${severityBadge} ${action.title}</h2><p>${action.message}</p><p><strong>Severity:</strong> ${action.severity}</p>`
+                    },
+                    toRecipients: recipients.map(r => ({ emailAddress: { address: r } }))
+                }
+            })
         });
+    }
+
+    private async sendGenericWebhook(action: RequestedAction): Promise<void> {
+        // POST (or custom method) to any HTTP endpoint — covers Slack, PagerDuty, etc.
+        const config = this.config['generic-webhook'];
+        if (!config) throw new Error('Generic webhook config not set');
+
+        const method = config.method || 'POST';
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            ...(config.headers || {})
+        };
+
+        // Use LLM-provided webhookPayload if present, otherwise build a default body
+        const body = action.webhookPayload
+            ? JSON.stringify(action.webhookPayload)
+            : JSON.stringify({
+                title: action.title,
+                message: action.message,
+                severity: action.severity,
+                timestamp: new Date().toISOString()
+            });
+
+        await fetch(config.url, { method, headers, body });
     }
 
     private async triggerPipeline(action: RequestedAction): Promise<void> {
@@ -751,6 +867,20 @@ You MUST respond with a JSON object matching this structure:
       "title": "Alert title",
       "message": "Alert body",
       "severity": "high"
+    },
+    {
+      "type": "email-smtp",
+      "title": "Upgrade failure spike",
+      "message": "15 upgrade failures detected in the last hour affecting 3 tenants.",
+      "severity": "medium",
+      "recipients": ["dev-lead@contoso.com"]
+    },
+    {
+      "type": "generic-webhook",
+      "title": "Incident: Long-running queries",
+      "message": "P95 query time exceeded 10s threshold.",
+      "severity": "high",
+      "webhookPayload": { "channel": "#bc-alerts", "priority": "urgent" }
     }
   ],
   "stateChanges": {
@@ -761,6 +891,18 @@ You MUST respond with a JSON object matching this structure:
   }
 }
 
+## Available Action Types
+
+You may use any of the following action types — but ONLY if they are configured for this agent:
+
+| Type | Purpose | Extra fields |
+|------|---------|-------------|
+| `teams-webhook` | Post an Adaptive Card to a Microsoft Teams channel. | — |
+| `email-smtp` | Send an email via SMTP relay (SendGrid, O365, etc.). | `recipients` (optional — falls back to configured defaults) |
+| `email-graph` | Send an email via Microsoft Graph API. | `recipients` (optional — falls back to configured defaults) |
+| `generic-webhook` | POST to any HTTP endpoint (Slack, PagerDuty, custom API). | `webhookPayload` (optional — custom JSON body for the target) |
+| `pipeline-trigger` | Trigger an Azure DevOps pipeline. | — |
+
 ## Rules
 
 - Do NOT invent data. Only report what you find in real telemetry.
@@ -768,6 +910,16 @@ You MUST respond with a JSON object matching this structure:
 - Do NOT re-alert for issues that have already been escalated (check actionsTaken in state).
 - Keep summaries concise — each run's findings should be 1-3 sentences.
 - Use deterministic fingerprints so the same issue is tracked consistently across runs.
+
+## Re-alerting & Cooldown
+
+You MUST avoid alert spam. Follow these rules strictly:
+
+1. **Before taking ANY action**, check the `actionsTaken` array in state for prior alerts with the same issue fingerprint.
+2. **Default cooldown: 24 hours.** If an action was already sent for the same issue within the last 24 hours, do NOT send another alert — unless the severity has **escalated** (e.g., medium → high) or the trend has **significantly worsened** (e.g., counts doubled).
+3. **Resolved-then-recurred issues are new.** If an issue was previously resolved and now reappears, it is treated as a new detection and alerting restarts.
+4. **When in doubt, do NOT alert.** A missed duplicate alert is far less harmful than flooding the team's inbox or Teams channel.
+5. **Log your reasoning.** In the `assessment` field, briefly explain why you chose to alert or suppress.
 `;
 
 export function buildAgentPrompt(instruction: string, state: AgentState): string {
@@ -958,10 +1110,24 @@ Issues in `resolvedIssues` are kept for 30 days (so the agent can reference rece
             "teams-webhook": {
                 "url": "https://outlook.office.com/webhook/..."
             },
-            "devops-workitem": {
-                "orgUrl": "https://dev.azure.com/contoso",
-                "project": "BC-Ops",
-                "workItemType": "Bug"
+            "email-smtp": {
+                "host": "smtp.sendgrid.net",
+                "port": 587,
+                "secure": false,
+                "auth": { "user": "apikey" },
+                "from": "bctb-agent@contoso.com",
+                "defaultTo": ["dev-lead@contoso.com", "bc-ops@contoso.com"]
+            },
+            "email-graph": {
+                "tenantId": "(will use top-level tenantId)",
+                "clientId": "aaaabbbb-cccc-dddd-eeee-ffffgggghhhh",
+                "from": "bctb-agent@contoso.com",
+                "defaultTo": ["dev-lead@contoso.com"]
+            },
+            "generic-webhook": {
+                "url": "https://hooks.slack.com/services/T00/B00/xxx",
+                "method": "POST",
+                "headers": { "X-Custom-Auth": "token-here" }
             },
             "pipeline-trigger": {
                 "orgUrl": "https://dev.azure.com/contoso",
@@ -975,7 +1141,10 @@ Issues in `resolvedIssues` are kept for 30 days (so the agent can reference rece
 
 **Secrets handling:**
 - `agents.llm.apiKey` → set via `AZURE_OPENAI_KEY` environment variable (not in config file)
-- `agents.actions.devops-workitem.pat` → set via `DEVOPS_PAT` environment variable
+- `agents.actions.email-smtp.auth.pass` → set via `SMTP_PASSWORD` environment variable
+- `agents.actions.email-graph` client secret → set via `GRAPH_CLIENT_SECRET` environment variable
+- `agents.actions.pipeline-trigger.pat` → set via `DEVOPS_PAT` environment variable
+- `agents.actions.generic-webhook` auth headers → inline in config (or use env var substitution for sensitive tokens)
 - Same pattern as existing `clientSecret` handling
 
 ### 8.2 Environment Variables
@@ -986,8 +1155,9 @@ Issues in `resolvedIssues` are kept for 30 days (so the agent can reference rece
 | `AZURE_OPENAI_KEY` | Azure OpenAI API key |
 | `AZURE_OPENAI_DEPLOYMENT` | Model deployment name (e.g., "gpt-4o") |
 | `TEAMS_WEBHOOK_URL` | Teams Incoming Webhook URL |
-| `DEVOPS_PAT` | Azure DevOps Personal Access Token |
-| `DEVOPS_ORG_URL` | Azure DevOps org URL (override) |
+| `SMTP_PASSWORD` | SMTP relay password / API key (used by `email-smtp` action) |
+| `GRAPH_CLIENT_SECRET` | Azure AD client secret (used by `email-graph` action) |
+| `DEVOPS_PAT` | Azure DevOps Personal Access Token (used by `pipeline-trigger` action) |
 
 Environment variables override config file values (same pattern as existing config).
 
@@ -1116,6 +1286,8 @@ jobs:
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
           AZURE_OPENAI_DEPLOYMENT: gpt-4o
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          GRAPH_CLIENT_SECRET: ${{ secrets.GRAPH_CLIENT_SECRET }}
           DEVOPS_PAT: ${{ secrets.DEVOPS_PAT }}
 
       - name: Commit updated agent state
@@ -1176,6 +1348,8 @@ steps:
       AZURE_OPENAI_KEY: $(AZURE_OPENAI_KEY)
       AZURE_OPENAI_DEPLOYMENT: gpt-4o
       TEAMS_WEBHOOK_URL: $(TEAMS_WEBHOOK_URL)
+      SMTP_PASSWORD: $(SMTP_PASSWORD)
+      GRAPH_CLIENT_SECRET: $(GRAPH_CLIENT_SECRET)
       DEVOPS_PAT: $(DEVOPS_PAT)
 
   - script: |
@@ -1250,7 +1424,8 @@ One paragraph: what the pipeline automates and how it fits into your workflow.
 2. Azure AD App Registration with Application Insights Reader role
 3. Azure OpenAI deployment (GPT-4o recommended)
 4. (Optional) Teams Incoming Webhook URL for notifications
-5. (Optional) Azure DevOps PAT for work item creation
+5. (Optional) SMTP relay or Azure AD app for email notifications
+6. (Optional) Azure DevOps PAT for pipeline triggers
 
 ## Setup Guide
 
@@ -1272,7 +1447,9 @@ Add these secrets to your [GitHub repo settings / Azure DevOps variable group]:
 | `AZURE_OPENAI_ENDPOINT` | Yes | Azure OpenAI endpoint | Azure Portal → Azure OpenAI → your resource → Keys and Endpoint |
 | `AZURE_OPENAI_KEY` | Yes | Azure OpenAI API key | Same as above |
 | `TEAMS_WEBHOOK_URL` | No | Teams Incoming Webhook for notifications | Teams → Channel → Connectors → Incoming Webhook |
-| `DEVOPS_PAT` | No | Azure DevOps PAT for work item creation | Azure DevOps → User Settings → Personal Access Tokens |
+| `SMTP_PASSWORD` | No | SMTP relay password / API key for email-smtp action | Your SMTP provider (SendGrid, O365, etc.) |
+| `GRAPH_CLIENT_SECRET` | No | Azure AD client secret for email-graph action | Azure Portal → App Registrations → Certificates & secrets (app needs Mail.Send) |
+| `DEVOPS_PAT` | No | Azure DevOps PAT for pipeline triggers | Azure DevOps → User Settings → Personal Access Tokens |
 
 ### Step 3: Copy the Pipeline File
 - Copy `telemetry-agent.yml` to `.github/workflows/` (GitHub) or root (Azure DevOps)
@@ -1352,7 +1529,7 @@ If it detects issues matching the instruction's criteria, it tracks them as acti
 
 ### Escalation
 When an issue persists across the configured number of consecutive checks,
-the agent takes the action specified in the instruction (Teams notification, DevOps work item, etc.).
+the agent takes the action specified in the instruction (Teams notification, email, etc.).
 
 ### Resolution
 When an issue is no longer detected, the agent marks it as resolved and
@@ -1383,7 +1560,7 @@ When an issue is no longer detected, the agent marks it as resolved and
 ## Purpose
 Monitors AppSource extension validation failures in your Business Central environments.
 Tracks recurring validation errors by extension name, escalates persistent issues
-to Teams and Azure DevOps.
+to Teams and email.
 
 Designed for BC ISVs who publish extensions via AppSource and need early warning
 when validation starts failing across customer environments.
@@ -1406,7 +1583,7 @@ when validation starts failing across customer environments.
 |------|-------------------|---------------|
 | Time window | Last 2 hours per run | Change "last 2 hours of data" to your preferred window |
 | Teams escalation threshold | 3 consecutive checks | Change "persist across 3 consecutive checks" |
-| DevOps escalation threshold | 6 consecutive checks | Change "persist across 6 consecutive checks" |
+| Email escalation threshold | 6 consecutive checks | Change "persist across 6 consecutive checks" |
 | Ignored tenants | "test" or "sandbox" in company name | Adjust the ignore pattern or remove the line entirely |
 | Focus areas | RT0005 error events | Add or change event IDs to match your scenario |
 
@@ -1521,7 +1698,7 @@ Check for validation failures (RT0005 events with error status),
 categorize by extension name and failure type.
 
 If failures persist across 3 consecutive checks, post to the Teams channel.
-If failures persist across 6 consecutive checks, create an Azure DevOps work item.
+If failures persist across 6 consecutive checks, send an email to the dev lead.
 
 Focus on the last 2 hours of data each run.
 Ignore test tenants (any tenant with "test" or "sandbox" in the company name).
@@ -1564,7 +1741,7 @@ proactive performance alerting before users complain.
 | Report execution p95 threshold | 30 seconds | Change "p95 exceeds 30 seconds" |
 | AL method threshold | 10 seconds consistently | Change "consistently exceeds 10 seconds" |
 | Teams escalation | 2 consecutive checks | Change the number |
-| DevOps escalation | 5 consecutive checks | Change the number |
+| Email escalation | 5 consecutive checks | Change the number |
 
 ## Expected Behavior
 
@@ -1589,7 +1766,7 @@ If any metric degrades for 2+ runs → Teams notification with:
   - Which metric degraded
   - Current value vs baseline
   - Most affected tenants
-If degradation persists 5+ runs → DevOps work item
+If degradation persists 5+ runs → email to dev lead
 ```
 
 ## Example state.json After 3 Runs (Degradation Detected)
@@ -1636,7 +1813,7 @@ Track these metrics:
 
 Compare current hour against previous runs to detect degradation.
 If performance degrades for 2+ consecutive checks, post to Teams.
-If degradation persists for 5+ checks, create a DevOps work item.
+If degradation persists for 5+ checks, send an email to the dev lead.
 
 Group findings by tenant and identify which tenants are most affected.
 ```
@@ -1675,7 +1852,7 @@ unlike the AppSource or Performance agents which focus on specific concerns.
 | Relative increase threshold | 200% increase | Change "increased by more than 200%" |
 | First detection | Log only (no action) | Change "Log the finding" if you want immediate action |
 | Second detection | Teams notification | Change to preferred action |
-| Third detection | DevOps work item | Change to preferred action |
+| Third detection | Email to dev lead | Change to preferred action |
 
 ## Expected Behavior
 
@@ -1744,7 +1921,7 @@ Flag any event type where:
 For flagged issues:
 - First detection: Log the finding (no action)
 - Second consecutive detection: Post to Teams with affected tenants and error details
-- Third consecutive detection: Create a DevOps work item
+- Third consecutive detection: Send an email to the dev lead
 
 Summarize overall health: percentage of events in error vs success state.
 ```
@@ -1782,8 +1959,8 @@ Unlike other agents which run indefinitely, this one is designed to be:
 |------|-------------------|---------------|
 | Time window | Last 2 hours | Change "last 2 hours" — shorter for faster detection |
 | Regression threshold | 50% worsening | Change "worsened by more than 50%" |
-| Notification | Teams + DevOps immediately | Remove either action if not needed |
-| DevOps tag | "deployment-regression" | Change the tag name |
+| Notification | Teams + email immediately | Remove either action if not needed |
+| Email tag | "deployment-regression" in subject | Change the tag name |
 | Auto-pause period | 24 hours of stable operation | Change the duration |
 
 ## How to Use
@@ -1827,8 +2004,8 @@ No actions taken (nothing to compare against yet).
 ### Post-Deployment Runs
 ```
 Agent compares current metrics against baseline from pre-deployment runs.
-If any metric worsened by >50%: immediate Teams + DevOps alert.
-The "deployment-regression" tag on the work item makes it easy to triage.
+If any metric worsened by >50%: immediate Teams + email alert.
+The "deployment-regression" tag in the email subject makes it easy to triage.
 ```
 
 ### Stable (No Regression)
@@ -1855,7 +2032,7 @@ After 24 hours of consistent stability, user pauses the agent.
       "counts": [5.8, 5.7],
       "actionsTaken": [
         { "run": 4, "action": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T14:15:20Z" },
-        { "run": 4, "action": "devops-workitem", "status": "sent", "timestamp": "2026-02-24T14:15:22Z" }
+        { "run": 4, "action": "email-smtp", "status": "sent", "timestamp": "2026-02-24T14:15:22Z" }
       ]
     }
   ]
@@ -1882,7 +2059,7 @@ Flag any metric that has worsened by more than 50% compared to pre-deployment ba
 
 If any regression is detected:
 - Immediately post to Teams with specific metrics and comparison
-- Create a DevOps work item with "deployment-regression" tag
+- Send an email to the dev lead with "deployment-regression" in the subject
 
 This agent should be started manually after a deployment and paused after 24 hours
 of stable operation.
@@ -1903,10 +2080,10 @@ These are ready-to-use agent instruction templates for common BC telemetry monit
 
 | Template | Use Case | Key Events | Escalation Pattern |
 |----------|----------|------------|-------------------|
-| [appsource-validation](appsource-validation/) | ISVs publishing to AppSource | RT0005, LC0010, LC0020 | 3 checks → Teams, 6 checks → DevOps |
-| [performance-monitoring](performance-monitoring/) | Track page/report/AL performance | RT0006, RT0007, RT0018 | 2 checks → Teams, 5 checks → DevOps |
-| [error-rate-monitoring](error-rate-monitoring/) | Catch-all error rate monitoring | All error events (dynamic) | 1st: log, 2nd: Teams, 3rd: DevOps |
-| [post-deployment-check](post-deployment-check/) | Short-lived post-deploy watch | All errors + performance | Immediate Teams + DevOps |
+| [appsource-validation](appsource-validation/) | ISVs publishing to AppSource | RT0005, LC0010, LC0020 | 3 checks → Teams, 6 checks → email |
+| [performance-monitoring](performance-monitoring/) | Track page/report/AL performance | RT0006, RT0007, RT0018 | 2 checks → Teams, 5 checks → email |
+| [error-rate-monitoring](error-rate-monitoring/) | Catch-all error rate monitoring | All error events (dynamic) | 1st: log, 2nd: Teams, 3rd: email |
+| [post-deployment-check](post-deployment-check/) | Short-lived post-deploy watch | All errors + performance | Immediate Teams + email |
 
 ## Quick Start
 
@@ -1936,7 +2113,7 @@ See each template's README for the customization points. Key principles:
 | Module | Tests |
 |--------|-------|
 | `context.ts` | Create agent, load/save state, sliding window compaction, resolved issue pruning |
-| `actions.ts` | Mock HTTP calls for Teams webhook, DevOps work item, pipeline trigger |
+| `actions.ts` | Mock HTTP calls for Teams webhook, email-smtp, email-graph, generic-webhook, pipeline trigger |
 | `prompts.ts` | Prompt building with various state configurations, output parsing |
 | `runtime.ts` | Mock LLM responses to test ReAct loop, tool call dispatch, error handling, max tool call limit |
 | CLI commands | Agent start, list, history, pause/resume |
@@ -1957,7 +2134,9 @@ Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP
 
 | Package | Purpose | Size Impact |
 |---------|---------|-------------|
-| None strictly required | Azure OpenAI can be called via native `fetch` | Zero |
+| `nodemailer` | SMTP email transport for `email-smtp` action | ~200KB |
+| None for email-graph | Uses native `fetch` + MSAL client_credentials | Zero |
+| None for generic-webhook | Uses native `fetch` | Zero |
 | `@azure/openai` (optional) | Typed Azure OpenAI SDK — better DX but adds dependency | ~200KB |
 
 **Recommendation:** Use native `fetch` (available in Node 20+) with typed interfaces. Avoids adding a dependency. The Azure OpenAI REST API is simple enough that a thin wrapper suffices.
@@ -1975,12 +2154,12 @@ Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP
 - **Result:** An agent can be created and run manually from the command line.
 
 ### Phase 2: Actions & CLI
-- [ ] `ActionDispatcher` — Teams webhook, DevOps work item
+- [ ] `ActionDispatcher` — Teams webhook, email-smtp, email-graph, generic-webhook
 - [ ] CLI: `agent list`, `agent history`, `agent pause/resume`, `agent run-all`
 - [ ] Context compaction (sliding window + LLM summary)
 - [ ] Resolved issue pruning
 - [ ] Unit + integration tests
-- **Result:** Full CLI, agents can notify and create work items.
+- **Result:** Full CLI, agents can send notifications (Teams, email, webhook) and trigger pipelines.
 
 ### Phase 3: Pipeline Templates & Examples
 - [ ] GitHub Actions workflow template with README
@@ -2009,7 +2188,8 @@ Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP
 | GitHub Actions (1440 min/month, free tier: 2000) | Free |
 | Azure DevOps Pipeline (1440 min/month, free tier: 1800) | Free |
 | Teams webhook | Free |
-| Azure DevOps work items | Free |
+| Email (SMTP relay / Graph API) | Free–low (SendGrid free tier: 100/day; Graph: free with M365) |
+| Generic webhook (Slack, PagerDuty, etc.) | Depends on target service plan |
 | **Total** | **~$5-10/month** |
 
 ---
@@ -2017,7 +2197,12 @@ Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP
 ## 16. Security Considerations
 
 - **LLM API key**: Stored as pipeline secret, never in config file or state.json.
-- **DevOps PAT**: Same — pipeline secret only.
+- **SMTP_PASSWORD**: Pipeline secret only. Never in config file (the `auth.pass` field is populated from env var at runtime).
+- **GRAPH_CLIENT_SECRET**: Pipeline secret only. Used for client_credentials token acquisition.
+- **DevOps PAT**: Pipeline secret only (used for pipeline-trigger action).
+- **Generic webhook auth**: Headers containing tokens are stored in the config file. If sensitive, use env var substitution or store the config in a private repo.
+- **Email recipients**: Visible in config and in LLM output. Avoid including sensitive internal addresses in public repos.
+- **Re-alerting safety**: Cooldown is LLM-decided (prompt-guided, not runtime-enforced). A misbehaving or jailbroken LLM could theoretically spam. If this is a concern, add a runtime rate limiter in Phase 4.
 - **State files**: May contain telemetry summaries. Ensure the Git repo is private if telemetry is sensitive.
 - **Tool call safety**: All MCP tools are read-only except `save_query`. The agent cannot modify telemetry data.
 - **Max tool calls**: Configurable limit prevents runaway LLM loops.
