@@ -1584,3 +1584,12 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-25**  Added Section 18 (Extension Workspace Scaffolding) to Agentic Monitoring design [Entry: 20046c42-5707-48c8-93c7-a84e47ee7df6]
   - **Why:** Extension should guide users through creating a complete agent monitoring workspace (config, agents, pipeline YAML, README).
   - **How:** Added Section 18 with multi-step QuickPick wizard UX flow, scaffolded file structure, config generation with env var placeholders, pipeline YAML generation, README generation. Updated Phase 4, added Phase 5, updated Open Question 2.
+- **2026-02-25** — Codebase architecture audit for agentic monitoring design [Entry: bcca6c8c-a62f-481a-b6cd-6054b25a77e7]
+  - **Why:** Need accurate understanding of existing ToolHandlers, tool definitions, CLI, config, and service wiring before implementing agentic monitoring feature.
+  - **How:** Searched workspace for ToolHandlers class, TOOL_DEFINITIONS, initializeServices, CLI commands, MCPConfig interface; reported 13 defined tools + 4 hidden handler-only tools.
+- **2026-02-25**  Codebase audit against design document claims [Entry: 50572561-a981-41e8-a7b5-4728d7642ce8]
+  - **Why:** Verify actual code signatures, interfaces, tool counts, and dependencies match design doc assumptions before implementation.
+  - **How:** Read toolHandlers.ts, toolDefinitions.ts, cli.ts, shared/config.ts, and mcp/package.json; reported exact findings with line numbers.
+- **2026-02-25**  Design doc review for Agentic Monitoring (Issue #98) [Entry: 955f86b5-7760-47ae-9aec-3052e0def025]
+  - **Why:** User requested a review of the design document for impossibilities and inconsistencies before starting implementation.
+  - **How:** Full document review against actual codebase  found 12 issues (field naming inconsistency, missing type defs, undefined variables, LOC underestimate, etc.). None are architectural blockers.
