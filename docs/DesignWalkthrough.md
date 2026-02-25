@@ -1596,3 +1596,18 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-25**  Fix 4 inconsistencies in Agentic Monitoring Design.md [Entry: a022d484-ca6e-490c-96b5-0175bcb3abd1]
   - **Why:** Correct inconsistencies found during review: action vs type field mismatch, undefined agentName in triggerPipeline, undefined resolvedConfigPath, missing AgentOutput interface.
   - **How:** Replaced all 'action' fields with 'type' in examples (7 occurrences), added agentName param to triggerPipeline/dispatch, defined resolvedConfigPath with path resolution logic, added full AgentOutput interface definition.
+- **2026-02-25**  Analyzed Copilot Studio as action type for Agentic Monitoring [Entry: 13288c72-2189-4d01-b586-bbd828961ae9]
+  - **Why:** User asked what it would take to add Copilot Studio as an automator/action type in the agent action dispatcher.
+  - **How:** Provided analysis of two options: (A) Direct Line API as first-class copilot-studio action type (~40 LOC, 10 doc changes), (B) generic-webhook via Power Automate (zero code). Recommended starting with Option B, adding Option A in Phase 3/4.
+- **2026-02-25**  Copilot Studio as alternative orchestrator analysis [Entry: df13a9c7-175b-45f0-ae89-7134f724b7e2]
+  - **Why:** User clarified Copilot Studio replaces the scheduler+LLM+ReAct loop, not just an action target. Needed to analyze what that means architecturally.
+  - **How:** Analyzed all components replaced by Copilot Studio (scheduler, LLM, ReAct loop, ActionDispatcher) vs what's missing (state management, HTTP deployment, instructions delivery). Proposed orchestrator-agnostic architecture with 4 new state MCP tools.
+- **2026-02-25**  Clarified state storage is Git not just filesystem [Entry: c554a6d6-795e-4b40-b42f-8819c6337ae7]
+  - **Why:** User corrected sloppy characterization  state is stored in a Git repo committed by the pipeline, not merely local filesystem.
+  - **How:** Acknowledged correction. Design doc step 6 explicitly says CI/CD pipeline commits state back to Git. For Copilot Studio path, state tools would need to access Git via API.
+- **2026-02-25**  Checked for Copilot Studio GitHub issue [Entry: 84fca632-a0d9-4f32-ba3b-0b8dfc1d269d]
+  - **Why:** User asked whether a GitHub issue exists for Copilot Studio integration.
+  - **How:** Searched codebase for issue references. Found only Issue #98 (Agentic Monitoring). Copilot Studio has a design doc (Instructions/3.) but no linked GitHub issue.
+- **2026-02-25**  Drafted GitHub issue for Copilot Studio orchestrator [Entry: 1840ffcc-78de-4e75-9adb-678684be1cff]
+  - **Why:** User asked to create a GitHub issue for Copilot Studio as alternative orchestrator, including all analysis from previous conversation.
+  - **How:** Drafted comprehensive GitHub issue covering: what Copilot Studio replaces (scheduler, LLM, ReAct loop, ActionDispatcher), prerequisites (HTTP deployment, state management), 3 state storage options, orchestrator-agnostic architecture diagram, suggested phasing. gh CLI not installed so provided ready-to-paste content.

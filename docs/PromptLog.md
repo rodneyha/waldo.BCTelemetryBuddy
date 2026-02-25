@@ -2751,3 +2751,23 @@ Change instructions an business logic to do this."
 > "fix inconsistencies #1, #5, #6, and #7 in the doc"
 
 ---
+### Entry ID: 13288c72-2189-4d01-b586-bbd828961ae9  2026-02-25 16:50
+> "Next question - what would it involve to include Copilot Studio as one of the automators?"
+
+---
+### Entry ID: df13a9c7-175b-45f0-ae89-7134f724b7e2  2026-02-25 17:20
+> "Not really. I see basically copilot studio as a possible alternative to Azure DevOps - where Copilot Studio would trigger it in a scheduled way, and the investigations are done in copilot studio"
+
+---
+### Entry ID: c554a6d6-795e-4b40-b42f-8819c6337ae7  2026-02-25 17:23
+> "you say 'The current design stores everything on the local filesystem:' - I hope you mean 'in a git repo'?"
+
+---
+### Entry ID: 84fca632-a0d9-4f32-ba3b-0b8dfc1d269d  2026-02-25 17:42
+> "Is there a github issue for Copilot Studio in this project already?"
+
+---
+### Entry ID: 1840ffcc-78de-4e75-9adb-678684be1cff  2026-02-25 17:46
+> "ok, create one, and already mention everything you already mentioned to me that has to be taken care of"
+
+---
