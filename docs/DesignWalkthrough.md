@@ -1617,3 +1617,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-25** — Expanded Design.md Section 12 with elaborate testing framework [Entry: 7d5acb01-e303-40f1-9910-52e3562b3f26]
   - **Why:** User requires test-first implementation; testing strategy must be part of the design doc from the start.
   - **How:** Replaced brief Section 12 with ~300-line comprehensive testing section covering 6 test files (~160 tests), mock strategy, helpers, coverage targets, and run commands. Updated Phase 1/2 checklists to enforce test-first workflow.
+- **2026-02-26** — Released MCP v3.0.2 patch [Entry: 359f6800-f00d-4012-859b-f1597ac49209]
+  - **Why:** Fix for stdio-mode profile switching bug (ToolHandlers configFilePath fallback, PR #99 by @StefanMaron)
+  - **How:** Bumped packages/mcp/package.json to 3.0.2, updated CHANGELOG.md, committed and pushed tag mcp-v3.0.2
