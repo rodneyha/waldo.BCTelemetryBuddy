@@ -2178,6 +2178,17 @@ Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP
 - [ ] Error handling hardening (LLM failures, API timeouts, malformed state)
 - **Result:** Production-ready, documented feature.
 
+### Phase 5: VSCode Extension — Workspace Scaffolding
+- [ ] `bcTelemetryBuddy.createAgentWorkspace` command — multi-step QuickPick wizard
+- [ ] Template files bundled with extension (`packages/extension/templates/agents/`)
+- [ ] Config generator: `.bctb-config.json` with `${ENV_VAR}` placeholders from active profile
+- [ ] Pipeline YAML generator (Azure DevOps + GitHub Actions)
+- [ ] Workspace README generator with setup checklist and variable table
+- [ ] `.env.example` generator for local testing
+- [ ] Chat participant integration: `@bctelemetry` → "Help me set up agent monitoring"
+- [ ] Tests for scaffolding logic (template rendering, file generation)
+- **Result:** Users can scaffold a complete agent monitoring workspace from the extension without manual file assembly.
+
 ---
 
 ## 15. Cost Estimates
@@ -2213,6 +2224,212 @@ Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP
 ## 17. Open Questions — RESOLVED
 
 1. **Should agents be able to call each other?** ~~Recommendation: Not in v1.~~ **CONFIRMED: Not in v1.**
-2. **Should the VS Code extension have agent management UI?** ~~Recommendation: CLI-first, extension later.~~ **CONFIRMED: CLI-first, extension later.**
+2. **Should the VS Code extension have agent management UI?** ~~Recommendation: CLI-first, extension later.~~ **CONFIRMED: CLI-first for runtime, but the extension SHOULD help scaffold agent monitoring workspaces.** See Section 18 for the workspace scaffolding design.
 3. **Should agents support multiple profiles?** ~~Recommendation: Yes, via `--profile` flag on `agent run`.~~ **CONFIRMED: Yes, via `--profile` flag. See Section 8.4 for state-vs-profile scoping.** One agent per environment is recommended.
 4. **Compaction strategy**: ~~Recommendation: Part of the LLM call.~~ **CONFIRMED: Part of the LLM call** (the LLM already sees the previous summary + new findings and writes an updated summary).
+
+---
+
+## 18. VSCode Extension — Agent Workspace Scaffolding
+
+### 18.1 Motivation
+
+Setting up an agent monitoring workspace requires creating multiple files and folders in the right structure, with a correctly configured `.bctb-config.json` that uses `${ENV_VAR}` placeholders for secrets, agent instruction files, and a pipeline YAML file. Users shouldn't have to assemble this by hand — the VSCode extension should guide them through it.
+
+The extension already knows the user's active connection profile (tenant, App Insights, Kusto cluster). It can use that context to pre-populate the config template and scaffold everything in one guided flow.
+
+### 18.2 User Flow
+
+```
+Command Palette → "BC Telemetry Buddy: Create Agent Monitoring Workspace"
+         │
+         ▼
+┌────────────────────────────────────────────┐
+│  Step 1: Choose target folder              │
+│  [Browse...] or use current workspace      │
+└────────────────┬───────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────┐
+│  Step 2: Select connection profile         │
+│  (pre-filled from active profile)          │
+│  ○ Production BC                           │
+│  ○ Staging BC                              │
+│  ○ Create new...                           │
+└────────────────┬───────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────┐
+│  Step 3: LLM Provider                      │
+│  ○ Anthropic (Claude)                      │
+│  ○ Azure OpenAI                            │
+│  Model: [claude-sonnet-4-20250514]       │
+└────────────────┬───────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────┐
+│  Step 4: Pipeline target                   │
+│  ○ Azure DevOps Pipelines                  │
+│  ○ GitHub Actions                          │
+│  ○ None (manual runs only)                 │
+└────────────────┬───────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────┐
+│  Step 5: Select agent templates            │
+│  ☑ AppSource Validation Monitor            │
+│  ☑ Performance Monitor                     │
+│  ☐ Error Rate Monitor                      │
+│  ☐ Post-Deployment Watch                   │
+│  ☐ Empty (write your own instruction)      │
+└────────────────┬───────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────┐
+│  Step 6: Notification channels (optional)  │
+│  ☐ Teams Webhook                           │
+│  ☐ Email (SMTP)                            │
+│  ☐ Email (Microsoft Graph)                 │
+│  ☐ Generic Webhook (Slack, PagerDuty, etc.)│
+└────────────────┬───────────────────────────┘
+                 │
+                 ▼
+         Scaffold workspace
+                 │
+                 ▼
+         Open workspace in VS Code
+```
+
+### 18.3 What Gets Scaffolded
+
+Based on the user's choices, the extension generates:
+
+```
+target-folder/
+├── .bctb-config.json              ← connection profile with ${} placeholders for secrets
+├── .gitignore                     ← ignores .bctb/cache/, node_modules/
+├── agents/
+│   ├── appsource-validation/      ← if selected
+│   │   ├── instruction.md         ← from template
+│   │   ├── state.json             ← empty initial state
+│   │   └── runs/
+│   │       └── .gitkeep
+│   └── performance/               ← if selected
+│       ├── instruction.md
+│       ├── state.json
+│       └── runs/
+│           └── .gitkeep
+├── queries/                       ← empty, agents may save queries here
+│   └── .gitkeep
+├── azure-pipelines.yml            ← if Azure DevOps selected
+│   OR
+├── .github/workflows/
+│   └── telemetry-agent.yml        ← if GitHub Actions selected
+└── README.md                      ← workspace-level README explaining setup
+```
+
+### 18.4 Config File Generation
+
+The generated `.bctb-config.json` uses `${VAR}` placeholders for all secrets (the existing `expandEnvironmentVariables()` in config.ts handles these at runtime):
+
+```json
+{
+    "profiles": {
+        "pipeline": {
+            "connectionName": "Production BC",
+            "authFlow": "client_credentials",
+            "tenantId": "${BCTB_TENANT_ID}",
+            "clientId": "${BCTB_CLIENT_ID}",
+            "clientSecret": "${BCTB_CLIENT_SECRET}",
+            "applicationInsightsAppId": "${BCTB_APP_INSIGHTS_ID}",
+            "kustoClusterUrl": "${BCTB_KUSTO_CLUSTER_URL}",
+            "workspacePath": "${BCTB_WORKSPACE_PATH}",
+            "queriesFolder": "queries"
+        }
+    },
+    "defaultProfile": "pipeline",
+    "cache": { "enabled": true, "ttlSeconds": 3600 },
+    "agents": {
+        "llm": {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-20250514"
+        },
+        "actions": {
+            "teams-webhook": {}
+        },
+        "defaults": {
+            "maxToolCalls": 25,
+            "contextWindowRuns": 5
+        }
+    }
+}
+```
+
+**Key design decision:** The `tenantId` and `applicationInsightsAppId` are known from the user's active profile in the extension — but the generated config uses `${ENV_VAR}` placeholders anyway. This is intentional:
+- The config file gets committed to Git → no secrets in source control.
+- The actual values come from the pipeline's variable group at runtime.
+- The generated `README.md` includes a table of required variables with descriptions, so the user knows exactly what to configure in their pipeline.
+
+However, the extension also generates a **companion `.env.example`** file for local testing:
+
+```bash
+# Copy this to .env and fill in actual values for local testing
+# These values are from your active BCTB profile "Production BC"
+BCTB_TENANT_ID=your-tenant-id-here
+BCTB_CLIENT_ID=your-client-id-here
+BCTB_CLIENT_SECRET=
+BCTB_APP_INSIGHTS_ID=your-app-insights-id-here
+BCTB_KUSTO_CLUSTER_URL=https://ade.applicationinsights.io
+BCTB_WORKSPACE_PATH=.
+ANTHROPIC_API_KEY=
+# TEAMS_WEBHOOK_URL=
+```
+
+The `.env.example` file is committed; the `.env` file is in `.gitignore`.
+
+### 18.5 Pipeline YAML Generation
+
+Based on the user's pipeline choice:
+
+**Azure DevOps** — generates `azure-pipelines.yml` from the template in Section 9.2, customized with:
+- The correct agent names from the selected templates
+- The correct env var names for the chosen LLM provider (`ANTHROPIC_API_KEY` vs `AZURE_OPENAI_KEY`)
+- The chosen notification action types
+
+**GitHub Actions** — generates `.github/workflows/telemetry-agent.yml` from the template in Section 9.1, similarly customized.
+
+### 18.6 Generated README.md
+
+The workspace-level `README.md` is generated from the user's choices and includes:
+
+1. **What this workspace does** — one paragraph based on selected agents
+2. **Setup checklist** — numbered steps to complete:
+   - Create Azure DevOps variable group / GitHub repo secrets
+   - Table of all required variables with descriptions and "where to get it" links
+   - First-run verification steps
+3. **Agent descriptions** — for each selected agent, a brief summary of what it monitors and how to customize `instruction.md`
+4. **Local testing** — how to run agents locally (`cp .env.example .env`, fill in values, `bctb-mcp agent run-all --once`)
+5. **Troubleshooting** — common issues and fixes
+
+### 18.7 Extension Implementation Notes
+
+**Command:** `bcTelemetryBuddy.createAgentWorkspace`
+
+**UI approach:** Multi-step QuickPick wizard (same pattern as the existing setup wizards in the extension). Each step is a `vscode.window.showQuickPick` or `vscode.window.showInputBox`. No webview needed — keep it lightweight.
+
+**Template storage:** Agent instruction templates and pipeline YAML templates are bundled with the extension (in `packages/extension/templates/agents/`). The extension reads them, applies string replacements for user choices, and writes them to the target folder.
+
+**Post-scaffold actions:**
+1. Open the generated workspace folder in VS Code (`vscode.commands.executeCommand('vscode.openFolder', ...)`)
+2. Show an information message: "Agent monitoring workspace created. See README.md for setup instructions."
+3. Open `README.md` in the editor automatically
+
+**Integration with chat participant:** The Copilot chat participant (`@bctelemetry`) should understand the command:
+> "Help me set up agent monitoring" → triggers the workspace scaffolding wizard
+
+### 18.8 Phase Alignment
+
+This feature belongs in **Phase 5** (see Section 14). It depends on:
+- Phase 1-2: Core runtime and CLI must work first (the scaffolded workspace needs to be runnable)
+- Phase 3: Pipeline templates must exist (the extension copies them)
+- Phase 4: Documentation must be complete (the extension references it in the generated README)

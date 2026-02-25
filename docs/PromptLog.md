@@ -2715,3 +2715,19 @@ Change instructions an business logic to do this."
 > "Continue implementing Design.md changes: remove devops-workitem, add email-smtp/email-graph/generic-webhook action types, add re-alerting cooldown, update all sections"
 
 ---
+### Entry ID: 3d0c0db5-2aae-43b9-a2a8-23d22c91c783  2026-02-25 13:59
+> "If I would implement this - what would be the setup flow to set this up on Azure DevOps, provided I would have an Anthropic APIKey for the LLM part? Take into account that the LLM needs to be able to use the TelemetryBuddy MCP. And will I be able to run it on a Microsoft Hosted Agent?"
+
+---
+### Entry ID: 5985729d-fd93-4a33-a323-5be89de9c4a2  2026-02-25 14:00
+> "If I would implement this - what would be the setup flow on Azure DevOps with Anthropic APIKey, can it run on Microsoft Hosted Agent?"
+
+---
+### Entry ID: 32f634fe-16a2-4074-b7fe-5ab6df8eedfc  2026-02-25 15:18
+> "Since the telemetry buddy works with a config file - how will that work in a devops process?"
+
+---
+### Entry ID: 20046c42-5707-48c8-93c7-a84e47ee7df6  2026-02-25 15:24
+> "May be an added requirement: the BCTelemetryBuddy VSCode Extension should be able to help in creating such a workspace. Add that to the design document."
+
+---

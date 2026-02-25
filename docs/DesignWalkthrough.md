@@ -1575,3 +1575,12 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-25** --- Design.md: replace devops-workitem with email/webhook + re-alerting cooldown [Entry: 55407a18-955b-41d7-8abc-8a2c12e7e2a6]
   - **Why:** User decided to remove devops-workitem and add email-smtp, email-graph, generic-webhook; plus LLM-decided cooldown-based re-alerting
   - **How:** Updated 20+ locations in Design.md across all sections (interfaces, ActionDispatcher, system prompt, config, pipelines, templates, testing, deps, security)
+- **2026-02-25**  Azure DevOps setup flow analysis for Agentic Monitoring with Anthropic + Microsoft-hosted agent [Entry: 5985729d-fd93-4a33-a323-5be89de9c4a2]
+  - **Why:** User exploring feasibility of running agentic monitoring on Azure DevOps with Anthropic LLM on Microsoft-hosted agents.
+  - **How:** Confirmed hosted agents work (Node.js, outbound internet, ephemeral OK with Git state). Documented full setup flow: App Registration, variable group, pipeline YAML, AnthropicProvider need.
+- **2026-02-25**  Config file strategy for Azure DevOps pipelines [Entry: 32f634fe-16a2-4074-b7fe-5ab6df8eedfc]
+  - **Why:** User asked how .bctb-config.json works in a pipeline where secrets can't be committed.
+  - **How:** Explained that expandEnvironmentVariables() already supports ${VAR} placeholders in config values. Recommended committing skeleton config with placeholders, secrets injected from variable group at runtime.
+- **2026-02-25**  Added Section 18 (Extension Workspace Scaffolding) to Agentic Monitoring design [Entry: 20046c42-5707-48c8-93c7-a84e47ee7df6]
+  - **Why:** Extension should guide users through creating a complete agent monitoring workspace (config, agents, pipeline YAML, README).
+  - **How:** Added Section 18 with multi-step QuickPick wizard UX flow, scaffolded file structure, config generation with env var placeholders, pipeline YAML generation, README generation. Updated Phase 4, added Phase 5, updated Open Question 2.
