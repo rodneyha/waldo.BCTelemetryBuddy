@@ -4,6 +4,7 @@ import { AuthService } from '@bctb/shared';
 import * as fs from 'fs';
 import * as path from 'path';
 import { VERSION } from './version.js';
+import { registerAgentCommands } from './agent/cli.js';
 
 const program = new Command();
 
@@ -183,5 +184,7 @@ program
             process.exit(1);
         }
     });
+
+registerAgentCommands(program);
 
 program.parse();
