@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-02-26
+
+### Fixed
+- **Profile switching in stdio mode**: `detectInitialProfile()`, `switchProfile()`, and `listProfiles()` in `ToolHandlers` (used by Claude Desktop / Claude Code) now respect `configFilePath` instead of hardcoding workspace path discovery — fixing `profileMode: "single"` being returned and profile switching failing when using `--config` with a custom path (PR #99 by @StefanMaron)
+
 ## [3.0.1] - 2026-02-24
 
 ### Fixed
