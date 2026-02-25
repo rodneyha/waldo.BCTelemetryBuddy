@@ -1611,3 +1611,9 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-25**  Drafted GitHub issue for Copilot Studio orchestrator [Entry: 1840ffcc-78de-4e75-9adb-678684be1cff]
   - **Why:** User asked to create a GitHub issue for Copilot Studio as alternative orchestrator, including all analysis from previous conversation.
   - **How:** Drafted comprehensive GitHub issue covering: what Copilot Studio replaces (scheduler, LLM, ReAct loop, ActionDispatcher), prerequisites (HTTP deployment, state management), 3 state storage options, orchestrator-agnostic architecture diagram, suggested phasing. gh CLI not installed so provided ready-to-paste content.
+- **2026-02-25** — Safety assessment of Agentic Monitoring implementation [Entry: 102ba46d-a121-4c89-ad96-8553779252e6]
+  - **Why:** User asked how safely the design can be implemented without breaking existing functionality.
+  - **How:** Analyzed existing MCP architecture (cli.ts, toolHandlers.ts, config.ts, server.ts) and mapped all integration points. Concluded the design is purely additive with zero changes to existing code.
+- **2026-02-25** — Expanded Design.md Section 12 with elaborate testing framework [Entry: 7d5acb01-e303-40f1-9910-52e3562b3f26]
+  - **Why:** User requires test-first implementation; testing strategy must be part of the design doc from the start.
+  - **How:** Replaced brief Section 12 with ~300-line comprehensive testing section covering 6 test files (~160 tests), mock strategy, helpers, coverage targets, and run commands. Updated Phase 1/2 checklists to enforce test-first workflow.

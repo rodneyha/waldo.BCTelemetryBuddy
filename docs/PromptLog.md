@@ -2771,3 +2771,19 @@ Change instructions an business logic to do this."
 > "ok, create one, and already mention everything you already mentioned to me that has to be taken care of"
 
 ---
+### Entry ID: 76ac3800-4864-40e8-889a-e7fc959d2fc8 — 2026-02-25 21:52
+> "How safe can we implement this without breaking anything? (referring to Agentic Monitoring Design.md)"
+
+---
+### Entry ID: 102ba46d-a121-4c89-ad96-8553779252e6 — 2026-02-25 21:52
+> "How safe can we implement this without breaking anything? (referring to Agentic Monitoring Design.md)"
+
+---
+### Entry ID: b3893b56-e879-435c-a823-71fbf456ce92 — 2026-02-25 22:07
+> "Add the elaborate testing framework to the Design.md, since we need to implement it from starters."
+
+---
+### Entry ID: 7d5acb01-e303-40f1-9910-52e3562b3f26 — 2026-02-25 22:07
+> "Add the elaborate testing framework to the Design.md, since we need to implement it from starters."
+
+---

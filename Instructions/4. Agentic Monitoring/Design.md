@@ -2142,25 +2142,425 @@ See each template's README for the customization points. Key principles:
 
 ## 12. Testing Strategy
 
-### 12.1 Unit Tests
+> **Principle:** Tests are NOT an afterthought. Every module is implemented test-first. The LLM is just another dependency to mock — by injecting an `LLMProvider` interface, the runtime tests can script exact tool-call sequences and final outputs without ever hitting an API. The entire test suite must run offline, in CI, in <10 seconds.
 
-| Module | Tests |
+### 12.1 Test File Layout
+
+All new agent tests live in a dedicated subdirectory, mirroring the `src/agent/` source structure:
+
+```
+packages/mcp/src/__tests__/
+├── (existing 13 test files — UNCHANGED)
+├── agent/                              ← NEW test directory
+│   ├── context.test.ts                 ← AgentContextManager (filesystem ops)
+│   ├── actions.test.ts                 ← ActionDispatcher (HTTP calls)
+│   ├── prompts.test.ts                 ← prompt building + output parsing
+│   ├── runtime.test.ts                 ← ReAct loop with mock LLM
+│   ├── runtime.integration.test.ts     ← multi-run integration scenarios
+│   └── cli-agent.test.ts              ← CLI command parsing
+```
+
+**Key constraint:** Zero changes to existing test files. The existing 329 tests remain untouched and serve as a regression guardrail.
+
+### 12.2 Testing Pyramid
+
+```
+            ┌───────────────┐
+            │  Integration   │  runtime.integration.test.ts (~15 tests)
+            │  (multi-run)   │  Real ContextManager + Mock LLM + Mock Actions
+            │                │  Tests full state lifecycle across consecutive runs
+            └───────┬───────┘
+                    │
+       ┌────────────┴────────────┐
+       │      Unit Tests          │  context + actions + prompts + runtime + cli (~145 tests)
+       │     (per module)         │  Each module tested in isolation with mocks
+       │                          │  Fast, deterministic, no external deps
+       └──────────────────────────┘
+```
+
+### 12.3 Mock Strategy
+
+Each external dependency has a consistent mocking approach used across all test files:
+
+```typescript
+// ═══ Mock LLM Provider ═══
+// The LLM is fully scripted — we control exactly what it "says" and which tools it "calls".
+// Each test defines a sequence of responses the mock LLM returns.
+
+const mockLLMProvider: LLMProvider = {
+    chat: jest.fn()
+};
+
+// Example: script a 2-step conversation (tool call → final output)
+(mockLLMProvider.chat as jest.Mock)
+    .mockResolvedValueOnce({
+        // First call: LLM requests a tool
+        toolCalls: [{
+            id: 'call_1',
+            function: { name: 'get_event_catalog', arguments: '{"status":"error"}' }
+        }],
+        assistantMessage: { role: 'assistant', tool_calls: [...] },
+        content: null,
+        usage: { promptTokens: 500, completionTokens: 100 }
+    })
+    .mockResolvedValueOnce({
+        // Second call: LLM returns final JSON output
+        toolCalls: null,
+        content: JSON.stringify({
+            summary: 'Found 3 error events.',
+            findings: 'RT0005 errors detected.',
+            assessment: 'New issue, first detection.',
+            activeIssues: [{ id: 'issue-001', fingerprint: 'rt0005-errors', ... }],
+            resolvedIssues: [],
+            actions: [],
+            stateChanges: { issuesCreated: ['issue-001'], issuesUpdated: [], issuesResolved: [], summaryUpdated: true }
+        }),
+        usage: { promptTokens: 1200, completionTokens: 300 }
+    });
+
+
+// ═══ Mock ToolHandlers ═══
+// We control tool results without needing real KustoService/AuthService/etc.
+
+const mockToolHandlers = {
+    executeToolCall: jest.fn().mockImplementation((toolName: string, params: any) => {
+        switch (toolName) {
+            case 'get_event_catalog':
+                return Promise.resolve({ events: [{ eventId: 'RT0005', count: 150, status: 'error' }] });
+            case 'query_telemetry':
+                return Promise.resolve({ columns: ['eventId', 'count'], rows: [['RT0005', 61]] });
+            default:
+                return Promise.resolve({ result: 'ok' });
+        }
+    })
+};
+
+
+// ═══ Mock ContextManager ═══
+// For runtime.test.ts — controls state loading without real filesystem.
+// For integration tests — uses REAL AgentContextManager with temp dirs.
+
+const mockContextManager = {
+    loadInstruction: jest.fn().mockReturnValue('Monitor errors.'),
+    loadState: jest.fn().mockReturnValue(createInitialState('test-agent')),
+    updateState: jest.fn().mockImplementation((name, prev, output, actions, dur, tools) => ({
+        ...prev, runCount: prev.runCount + 1, summary: output.summary, lastRun: new Date().toISOString()
+    })),
+    saveState: jest.fn(),
+    saveRunLog: jest.fn()
+};
+
+
+// ═══ Mock ActionDispatcher ═══
+
+const mockActionDispatcher = {
+    dispatch: jest.fn().mockResolvedValue([])
+};
+
+
+// ═══ Mock global.fetch ═══
+// For actions.test.ts — intercepts all HTTP calls (Teams, Graph, webhooks, pipelines).
+
+global.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ access_token: 'mock-token' })
+});
+```
+
+### 12.4 Unit Tests — `context.test.ts` (~40 tests)
+
+Tests `AgentContextManager` with a **real temp directory** (not mocked `fs`). This tests actual file I/O which is the whole point of the context manager. Uses `os.tmpdir()` + cleanup in `afterEach`.
+
+```typescript
+// Setup pattern
+let tempDir: string;
+let contextManager: AgentContextManager;
+
+beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bctb-agent-test-'));
+    contextManager = new AgentContextManager(tempDir, 5);
+});
+
+afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+});
+```
+
+| Test Group | Specific Tests |
+|------------|----------------|
+| **createAgent** | Creates `agents/<name>/` directory structure; writes `instruction.md` with exact content; writes `state.json` with correct initial schema (all fields present); creates empty `runs/` directory; rejects invalid agent names containing spaces; rejects names containing slashes or backslashes; rejects empty name; is idempotent if agent already exists (no overwrite) |
+| **loadInstruction** | Reads instruction text verbatim (preserves whitespace, newlines); throws descriptive error if agent doesn't exist; throws if `instruction.md` is missing but directory exists |
+| **loadState** | Returns initial state (runCount=0, status='active') if no `state.json` exists; parses existing `state.json` correctly with all nested fields; handles corrupted JSON gracefully (returns initial state or throws with clear message); preserves `activeIssues` array with all sub-fields |
+| **saveState** | Writes valid pretty-printed JSON (2-space indent); roundtrips correctly (save → load → deep equal); preserves all fields including nested `activeIssues[].actionsTaken[]`; overwrites previous state completely |
+| **saveRunLog** | Creates `runs/` directory if missing; uses correct timestamp format in filename (`YYYY-MM-DDTHH-MMZ.json`); writes complete run log with all fields; does not overwrite existing run files with different timestamps |
+| **updateState** | Increments `runCount` by 1; updates `lastRun` to current ISO timestamp; replaces `summary` with LLM output summary; pushes new `AgentRunSummary` to `recentRuns`; **sliding window**: trims `recentRuns` to window size when exceeded (default 5); correctly builds `AgentRunSummary` from output + duration + tool names; merges new active issues from LLM output; updates existing active issues (consecutiveDetections, trend, counts); moves resolved issues from `activeIssues` to `resolvedIssues`; preserves `firstSeen` when updating existing issues; sets `run` field on all executed actions; prunes `resolvedIssues` older than 30 days; does NOT prune `resolvedIssues` younger than 30 days |
+| **listAgents** | Finds all agent directories containing `instruction.md`; ignores directories without `instruction.md`; returns status, run count, last run time, active issue count for each; returns empty array when no agents exist; ignores non-directory entries in `agents/` |
+| **getRunHistory** | Returns run logs sorted by timestamp (newest first); respects `--limit` parameter; returns empty array when no runs exist; parses all run log fields correctly |
+
+### 12.5 Unit Tests — `prompts.test.ts` (~25 tests)
+
+Pure functions, no mocks needed. These are the fastest tests in the suite.
+
+| Test Group | Specific Tests |
+|------------|----------------|
+| **AGENT_SYSTEM_PROMPT constant** | Is a non-empty string; contains "Output Format" section with JSON schema; contains "Re-alerting & Cooldown" section; contains all 5 action types (teams-webhook, email-smtp, email-graph, generic-webhook, pipeline-trigger); contains "Rules" section |
+| **buildAgentPrompt (first run)** | Contains instruction text verbatim; contains "FIRST RUN" indicator; includes current ISO timestamp; includes run number = 1; does NOT contain "Previous State" summary section |
+| **buildAgentPrompt (subsequent run)** | Contains previous `summary` text; contains `Active Issues` section with JSON when issues exist; lists each recent run with findings text; shows action types taken per recent run; includes correct run number (runCount + 1) |
+| **buildAgentPrompt (edge cases)** | Handles empty string summary; handles zero active issues (no "Active Issues" section or shows "(0)"); handles maximum `recentRuns` at window size; handles state with only resolved issues (no active) |
+| **parseAgentOutput (valid JSON)** | Parses raw JSON object string; parses JSON wrapped in ` ```json ``` ` markdown fences; parses JSON with leading/trailing whitespace; extracts all required fields: `summary`, `findings`, `assessment`, `activeIssues`, `resolvedIssues`, `actions`, `stateChanges`; handles `actions` array with all action types; handles empty `actions` array |
+| **parseAgentOutput (invalid)** | Throws on empty string; throws on plain text with no JSON; throws on malformed JSON (missing closing brace); throws on valid JSON missing required fields (future: if we add schema validation) |
+| **filterToolsByScope** | `'read-only'` scope excludes `save_query` and `switch_profile`; `'read-only'` scope includes all other tools (get_event_catalog, query_telemetry, etc.); `'full'` scope includes all 14 tools; returns new array (does not mutate input) |
+| **toolDefinitionsToOpenAI** | Converts each `ToolDefinition` to OpenAI function calling format; output has `type: 'function'`, `function.name`, `function.parameters`; preserves `required` arrays from inputSchema; handles tool definitions with empty properties |
+
+### 12.6 Unit Tests — `actions.test.ts` (~30 tests)
+
+Mocks `global.fetch` to intercept all HTTP calls. Mocks `nodemailer` for SMTP tests. Tests each action type in isolation.
+
+```typescript
+// Setup pattern
+let fetchMock: jest.Mock;
+
+beforeEach(() => {
+    fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    global.fetch = fetchMock;
+});
+```
+
+| Test Group | Specific Tests |
+|------------|----------------|
+| **Teams webhook** | Sends POST to configured URL; body contains Adaptive Card structure; uses severity color: `'high'` → `'attention'`, `'medium'` → `'warning'`, `'low'` → `'good'`; card body includes title and message; throws if webhook URL not configured in ActionConfig; returns `{ type: 'teams-webhook', status: 'sent' }` on HTTP 200; returns `{ type: 'teams-webhook', status: 'failed' }` on HTTP error or fetch throw |
+| **Email SMTP** | Creates nodemailer transport with correct host/port/secure/auth; sends to `action.recipients` when provided; falls back to `config.defaultTo` when no recipients on action; throws if no recipients anywhere; subject includes severity badge (🔴/🟡/🟢); HTML body includes title and message; returns sent/failed status |
+| **Email Graph** | First call acquires token via `client_credentials` grant to correct token URL; second call POSTs to `/users/{from}/sendMail` with Bearer token; recipients come from action or fall back to config defaults; throws if `GRAPH_CLIENT_SECRET` env var is not set; throws if no recipients specified anywhere; body contains HTML with severity badge |
+| **Generic webhook** | POSTs to configured URL; uses custom HTTP method if configured (e.g., PUT); includes custom headers from config; uses `action.webhookPayload` as body when present; builds default body `{ title, message, severity, timestamp }` when no webhookPayload; returns sent/failed status |
+| **Pipeline trigger** | POSTs to correct Azure DevOps API URL pattern (`{orgUrl}/{project}/_apis/pipelines/{id}/runs`); includes Basic auth header from PAT; body includes `templateParameters` with `agentName` and `investigationId`; throws if pipeline config not set |
+| **dispatch (orchestration)** | Executes all actions in sequence; returns array of `AgentAction[]` with `run: 0` (assigned later by updateState); captures both sent and failed statuses; continues executing remaining actions if one fails (no abort); returns empty array for empty actions input |
+| **dispatch (no config)** | Gracefully fails each action type when its config section is missing; all returned actions have `status: 'failed'` |
+
+### 12.7 Unit Tests — `runtime.test.ts` (~35 tests)
+
+The most important test file. Tests the ReAct loop with fully scripted LLM responses.
+
+```typescript
+// Setup pattern — all dependencies are mocked
+let runtime: AgentRuntime;
+let mockLLM: jest.Mocked<LLMProvider>;
+let mockToolHandlers: jest.Mocked<ToolHandlers>;
+let mockContext: jest.Mocked<AgentContextManager>;
+let mockActions: jest.Mocked<ActionDispatcher>;
+
+beforeEach(() => {
+    mockLLM = { chat: jest.fn() } as any;
+    mockToolHandlers = { executeToolCall: jest.fn() } as any;
+    mockContext = {
+        loadInstruction: jest.fn().mockReturnValue('Monitor errors.'),
+        loadState: jest.fn().mockReturnValue(createInitialState('test')),
+        updateState: jest.fn().mockReturnValue(createInitialState('test')),
+        saveState: jest.fn(),
+        saveRunLog: jest.fn()
+    } as any;
+    mockActions = { dispatch: jest.fn().mockResolvedValue([]) } as any;
+
+    runtime = new AgentRuntime(mockToolHandlers, mockContext, mockActions, {
+        llmProvider: mockLLM,
+        maxToolCalls: 20,
+        maxTokens: 4096,
+        contextWindowRuns: 5,
+        toolScope: 'read-only'
+    });
+});
+```
+
+| Test Group | Specific Tests |
+|------------|----------------|
+| **Simple pass (no tool calls)** | LLM returns final JSON on first `chat()` call; `loadInstruction` and `loadState` are called; `updateState` is called with the parsed output; `saveState` is called with updated state; `saveRunLog` is called with complete run log; returned `AgentRunLog` has correct `runId`, `agentName`, `timestamp`, `durationMs` |
+| **Single tool call** | LLM first returns toolCalls for `get_event_catalog`; `executeToolCall('get_event_catalog', ...)` is called; tool result is pushed as `{ role: 'tool' }` message; LLM's second `chat()` call receives the tool result in messages; LLM returns final JSON on second call; `toolCallLog` has 1 entry with correct `sequence`, `tool`, `args`, `durationMs` |
+| **Multiple sequential tool calls** | LLM requests tools across 3 separate `chat()` calls (one tool per response); all 3 `executeToolCall` calls happen; messages accumulate correctly (system → user → assistant → tool → assistant → tool → assistant → tool → final); tool call log has 3 entries with sequence 1, 2, 3 |
+| **Parallel tool calls** | LLM returns 2 toolCalls in one response; both `executeToolCall` calls happen; both tool results are pushed to messages; single `chat()` response triggers 2 tool executions |
+| **Max tool calls safety** | Mock LLM always returns toolCalls (never stops); after `maxToolCalls` iterations, runtime throws `"exceeded max tool calls"`; `saveState` is NOT called; `saveRunLog` is NOT called |
+| **LLM returns invalid JSON** | LLM returns content that fails `parseAgentOutput`; error propagates (thrown); `saveState` is NOT called; `saveRunLog` is NOT called; `dispatch` is NOT called |
+| **Tool call throws error** | `executeToolCall` throws an Error for one tool; error message is sent back as tool result string (not a crash); LLM continues reasoning with subsequent `chat()` call; final output is still processed normally |
+| **Action dispatch** | LLM output includes 2 actions (teams-webhook + email-smtp); `actionDispatcher.dispatch` is called with those 2 actions; returned executed actions are passed to `contextManager.updateState` |
+| **First run context** | `loadState` returns initial state with `runCount: 0`; `buildAgentPrompt` receives the initial state; `updateState` receives `runCount: 0` state (it increments internally) |
+| **Token tracking** | After 3 `chat()` calls (2 tool rounds + 1 final), `promptTokens` and `completionTokens` are summed across all calls; run log `llm.totalTokens` equals `promptTokens + completionTokens` |
+| **Tool scope filtering** | When `toolScope: 'read-only'`, the tools passed to `chat()` do NOT include `save_query` or `switch_profile`; when `toolScope: 'full'`, all tools are included |
+| **Run log completeness** | Returned `AgentRunLog` contains all required fields: `runId`, `agentName`, `timestamp`, `durationMs`, `instruction`, `stateAtStart` (with `summary`, `activeIssueCount`, `runCount`), `llm` (with all token/tool counts), `toolCalls` array, `assessment`, `findings`, `actions`, `stateChanges` |
+
+### 12.8 Integration Tests — `runtime.integration.test.ts` (~15 tests)
+
+Uses **real** `AgentContextManager` (temp directory) + **mock** LLM + **mock** ActionDispatcher. Tests the full pipeline over multiple consecutive runs to verify state accumulation, sliding window behavior, and issue lifecycle.
+
+```typescript
+// Setup pattern — real filesystem, mock LLM
+let tempDir: string;
+let contextManager: AgentContextManager;
+let mockLLM: jest.Mocked<LLMProvider>;
+let mockActions: jest.Mocked<ActionDispatcher>;
+
+beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bctb-agent-integ-'));
+    contextManager = new AgentContextManager(tempDir, 5);
+    mockLLM = { chat: jest.fn() } as any;
+    mockActions = { dispatch: jest.fn().mockResolvedValue([]) } as any;
+
+    // Create a test agent
+    contextManager.createAgent('test-agent', 'Monitor errors. Alert on Teams after 3 consecutive detections.');
+});
+
+afterEach(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+});
+```
+
+| Scenario | What It Validates |
+|----------|------------------|
+| **3-run escalation lifecycle** | Run 1: LLM finds issue (consecutiveDetections=1), no action requested. Run 2: same issue persists (consecutiveDetections=2), no action. Run 3: consecutiveDetections=3, LLM requests teams-webhook action. Verify `state.json` after each run: `runCount` increments, `activeIssues[0].consecutiveDetections` matches, `actionsTaken` only populated after run 3. |
+| **Issue resolution** | Run 1: issue detected, added to `activeIssues`. Run 2: issue no longer detected, LLM marks it resolved. Verify issue moved from `activeIssues` to `resolvedIssues`. Verify `resolvedIssues[0]` has correct `lastSeen` and original `firstSeen`. |
+| **Sliding window compaction** | Run agent through 7 consecutive runs with a window size of 5. After run 7, verify `recentRuns.length === 5`. Verify `recentRuns` contains runs 3-7 (oldest 2 dropped). Verify `summary` field was updated by LLM to incorporate dropped runs. |
+| **Resolved issue pruning (30-day TTL)** | Manually create state with a resolved issue whose `lastSeen` is 31 days ago. Run agent once. Verify the old resolved issue is pruned from `resolvedIssues`. Verify recently-resolved issues (< 30 days) are preserved. |
+| **Multiple agents isolation** | Create 2 agents: `agent-a` and `agent-b`. Run each once with different LLM outputs. Verify `agent-a/state.json` and `agent-b/state.json` are independent (no cross-contamination). Verify `agent-a/runs/` and `agent-b/runs/` each have exactly 1 file. |
+| **Paused agent behavior** | Set agent state `status: 'paused'`. Attempt to run. Verify the runtime either throws or returns a skip indicator. Verify state is NOT modified. |
+| **Run log accumulation** | Run agent 3 times. Verify `agents/test-agent/runs/` directory has exactly 3 JSON files. Verify each file has a unique timestamp-based name. Verify files are parseable and contain correct `runId` (1, 2, 3). |
+| **State roundtrip fidelity** | Run agent with complex LLM output (multiple active issues, multiple actions, various trends). Read back `state.json`. Deep-compare all nested fields for exact match. Ensures no data loss through serialization/deserialization. |
+| **Error recovery** | Run 1 succeeds. Run 2: LLM returns invalid JSON (parse fails). Run 3: LLM returns valid JSON. Verify state after run 3: `runCount` is 2 (run 2 was not counted), state reflects runs 1 and 3 only. |
+| **Empty telemetry** | LLM calls `get_event_catalog` which returns zero events. LLM outputs "no findings" with empty `activeIssues`. Verify state is updated cleanly: `summary` says "no issues found", `activeIssues` stays empty. |
+
+### 12.9 Unit Tests — `cli-agent.test.ts` (~15 tests)
+
+Tests Commander.js command parsing, option handling, and wiring. Mocks `AgentRuntime`, `AgentContextManager`, `loadConfigFromFile`, and `initializeServices`.
+
+| Command | Specific Tests |
+|---------|----------------|
+| **agent start** | Parses `--name` and instruction argument; calls `contextManager.createAgent(name, instruction)`; prints success message; errors if `--name` is missing; errors if instruction is empty |
+| **agent run --once** | Parses agent name argument; loads config via `loadConfigFromFile`; initializes services via `initializeServices`; creates `AgentRuntime` with correct config; calls `runtime.run(agentName)`; exits 0 on successful run; exits 1 when runtime throws; passes `--config` and `--profile` options through |
+| **agent run-all --once** | Calls `contextManager.listAgents()`; runs each active agent; skips agents with `status: 'paused'`; reports per-agent success/failure; exits 0 if all succeed; exits 1 if any fail |
+| **agent list** | Calls `contextManager.listAgents()`; displays formatted table with name, status, run count, last run, active issues; handles empty agent list gracefully |
+| **agent history** | Parses `--limit` flag; calls `contextManager.getRunHistory(name, limit)`; displays formatted run history; handles no runs gracefully |
+| **agent pause / resume** | Loads state; sets `status` to `'paused'`/`'active'`; saves state; errors if agent doesn't exist |
+
+### 12.10 Test Infrastructure & Conventions
+
+**Framework:** Jest + ts-jest (identical to existing test setup — no new test dependencies).
+
+**Coverage targets for `src/agent/` modules:**
+
+| Metric | Target |
+|--------|--------|
+| Lines | 90%+ |
+| Branches | 85%+ |
+| Functions | 90%+ |
+| Statements | 90%+ |
+
+**Jest configuration** — the existing `jest.config.js` already discovers tests under `src/__tests__/` recursively, so tests in `src/__tests__/agent/` are automatically picked up. No config changes needed.
+
+**Naming convention:** `<module>.test.ts` for unit tests, `<module>.integration.test.ts` for integration tests.
+
+**Helper module** — shared across test files:
+
+```typescript
+// src/__tests__/agent/helpers.ts — shared test utilities
+
+export function createInitialState(agentName: string): AgentState {
+    return {
+        agentName,
+        created: '2026-02-24T10:00:00Z',
+        lastRun: '',
+        runCount: 0,
+        status: 'active',
+        summary: '',
+        activeIssues: [],
+        resolvedIssues: [],
+        recentRuns: []
+    };
+}
+
+export function createStateWithIssues(agentName: string, issueCount: number): AgentState {
+    const state = createInitialState(agentName);
+    state.runCount = 3;
+    state.lastRun = '2026-02-24T12:00:00Z';
+    state.summary = `Found ${issueCount} issues across 3 runs.`;
+    state.activeIssues = Array.from({ length: issueCount }, (_, i) => ({
+        id: `issue-${String(i + 1).padStart(3, '0')}`,
+        fingerprint: `fp-${i + 1}`,
+        title: `Test issue ${i + 1}`,
+        firstSeen: '2026-02-24T10:00:00Z',
+        lastSeen: '2026-02-24T12:00:00Z',
+        consecutiveDetections: 3,
+        trend: 'stable' as const,
+        counts: [10, 12, 11],
+        actionsTaken: []
+    }));
+    return state;
+}
+
+export function createMockLLMFinalResponse(output: Partial<AgentOutput>): ChatResponse {
+    const fullOutput: AgentOutput = {
+        summary: output.summary ?? 'Test summary',
+        findings: output.findings ?? 'Test findings',
+        assessment: output.assessment ?? 'Test assessment',
+        activeIssues: output.activeIssues ?? [],
+        resolvedIssues: output.resolvedIssues ?? [],
+        actions: output.actions ?? [],
+        stateChanges: output.stateChanges ?? {
+            issuesCreated: [], issuesUpdated: [], issuesResolved: [], summaryUpdated: true
+        }
+    };
+    return {
+        toolCalls: null,
+        content: JSON.stringify(fullOutput),
+        assistantMessage: { role: 'assistant', content: JSON.stringify(fullOutput) },
+        usage: { promptTokens: 500, completionTokens: 200 }
+    };
+}
+
+export function createMockLLMToolCallResponse(
+    toolCalls: { name: string; args: Record<string, any> }[]
+): ChatResponse {
+    return {
+        toolCalls: toolCalls.map((tc, i) => ({
+            id: `call_${i + 1}`,
+            function: { name: tc.name, arguments: JSON.stringify(tc.args) }
+        })),
+        content: null,
+        assistantMessage: { role: 'assistant', tool_calls: [...] },
+        usage: { promptTokens: 300, completionTokens: 50 }
+    };
+}
+```
+
+### 12.11 How to Run Tests
+
+```bash
+# Run only agent tests (fast, targeted)
+npx jest --testPathPattern="agent/" --forceExit
+
+# Run all tests (existing 329 + new agent tests)
+npm test
+
+# Run with coverage for agent modules only
+npx jest --testPathPattern="agent/" --coverage --collectCoverageFrom="src/agent/**/*.ts" --forceExit
+
+# Run a specific test file
+npx jest --testPathPattern="context.test" --forceExit
+
+# Watch mode during development
+npx jest --testPathPattern="agent/" --watch
+```
+
+### 12.12 Test Metrics Summary
+
+| Metric | Value |
 |--------|-------|
-| `context.ts` | Create agent, load/save state, sliding window compaction, resolved issue pruning |
-| `actions.ts` | Mock HTTP calls for Teams webhook, email-smtp, email-graph, generic-webhook, pipeline trigger |
-| `prompts.ts` | Prompt building with various state configurations, output parsing |
-| `runtime.ts` | Mock LLM responses to test ReAct loop, tool call dispatch, error handling, max tool call limit |
-| CLI commands | Agent start, list, history, pause/resume |
-
-### 12.2 Integration Tests
-
-- End-to-end: create agent → run with mocked LLM → verify state.json updated correctly
-- Multi-run: run agent 3 times → verify context accumulation and sliding window
-- Action execution: verify Teams webhook receives correct payload (mock server)
-
-### 12.3 Test Infrastructure
-
-Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP calls.
+| New test files | 6 (+ 1 helpers module) |
+| Estimated total new tests | ~160 |
+| Existing tests (untouched) | 329 (13 files) |
+| Framework | Jest + ts-jest (no new dependencies) |
+| External network calls | Zero |
+| LLM API calls | Zero (fully mocked) |
+| Real email/webhook sends | Zero (mocked fetch) |
+| Filesystem approach | Real temp dirs for context tests, mocks for runtime unit tests |
+| Target execution time | <10 seconds for all agent tests |
+| CI-ready | Yes — runs offline, deterministic, no secrets needed |
 
 ---
 
@@ -2179,21 +2579,31 @@ Same as existing: Jest, mocked `fs` for file operations, mocked `fetch` for HTTP
 
 ## 14. Implementation Phases
 
+> **Approach:** Every phase follows a **test-first workflow**. Write the test file skeleton with test names → implement the module → make all tests green → move to next module. No module is considered "done" until its test file passes at 90%+ coverage.
+
 ### Phase 1: Core Runtime (MVP)
-- [ ] `AgentContextManager` — create, load, save state
-- [ ] `AgentRuntime` — ReAct loop with Azure OpenAI
-- [ ] `parseAgentOutput` — extract structured output from LLM
-- [ ] CLI: `agent start`, `agent run --once`
-- [ ] Unit tests for all above
-- **Result:** An agent can be created and run manually from the command line.
+- [ ] **Tests first:** Create `src/__tests__/agent/helpers.ts` (shared test utilities)
+- [ ] **Tests first:** Create `src/__tests__/agent/context.test.ts` (40 tests, all red)
+- [ ] `AgentContextManager` — create, load, save state → make context.test.ts green
+- [ ] **Tests first:** Create `src/__tests__/agent/prompts.test.ts` (25 tests, all red)
+- [ ] `buildAgentPrompt`, `parseAgentOutput`, `filterToolsByScope` → make prompts.test.ts green
+- [ ] **Tests first:** Create `src/__tests__/agent/runtime.test.ts` (35 tests, all red)
+- [ ] `AgentRuntime` — ReAct loop with LLMProvider interface → make runtime.test.ts green
+- [ ] **Tests first:** Create `src/__tests__/agent/cli-agent.test.ts` (basic `agent start` + `agent run --once` — ~8 tests)
+- [ ] CLI: `agent start`, `agent run --once` → make cli-agent.test.ts green
+- [ ] **Verification gate:** `npx jest --testPathPattern="agent/" --coverage` — all green, 90%+ coverage on `src/agent/`
+- **Result:** An agent can be created and run manually from the command line. ~108 tests covering all core modules.
 
 ### Phase 2: Actions & CLI
-- [ ] `ActionDispatcher` — Teams webhook, email-smtp, email-graph, generic-webhook
-- [ ] CLI: `agent list`, `agent history`, `agent pause/resume`, `agent run-all`
-- [ ] Context compaction (sliding window + LLM summary)
-- [ ] Resolved issue pruning
-- [ ] Unit + integration tests
-- **Result:** Full CLI, agents can send notifications (Teams, email, webhook) and trigger pipelines.
+- [ ] **Tests first:** Create `src/__tests__/agent/actions.test.ts` (30 tests, all red)
+- [ ] `ActionDispatcher` — Teams webhook, email-smtp, email-graph, generic-webhook → make actions.test.ts green
+- [ ] **Tests first:** Extend `cli-agent.test.ts` with remaining commands (~7 more tests)
+- [ ] CLI: `agent list`, `agent history`, `agent pause/resume`, `agent run-all` → make new CLI tests green
+- [ ] **Tests first:** Create `src/__tests__/agent/runtime.integration.test.ts` (15 tests, all red)
+- [ ] Context compaction (sliding window + LLM summary) → make integration tests green
+- [ ] Resolved issue pruning → make pruning integration tests green
+- [ ] **Verification gate:** `npm test` — all 329 existing + ~160 new agent tests pass, zero regressions
+- **Result:** Full CLI, agents can send notifications (Teams, email, webhook) and trigger pipelines. ~160 agent tests total.
 
 ### Phase 3: Pipeline Templates & Examples
 - [ ] GitHub Actions workflow template with README
