@@ -409,7 +409,8 @@ export class AgentRuntime {
 
                 // 4. Execute actions (Phase 1: log-only stub; Phase 2: real HTTP calls)
                 const executedActions = await this.actionDispatcher.dispatch(
-                    output.actions
+                    output.actions,
+                    agentName
                 );
 
                 // 5. Update state (pass run metadata for AgentRunSummary construction)
@@ -620,7 +621,8 @@ export class ActionDispatcher {
      * Phase 1: log-only stub (no HTTP calls). Phase 2: real implementations.
      */
     async dispatch(
-        requestedActions: RequestedAction[]
+        requestedActions: RequestedAction[],
+        agentName: string
     ): Promise<AgentAction[]> {
         const executed: AgentAction[] = [];
 
@@ -640,7 +642,7 @@ export class ActionDispatcher {
                         await this.sendGenericWebhook(action);
                         break;
                     case 'pipeline-trigger':
-                        await this.triggerPipeline(action);
+                        await this.triggerPipeline(action, agentName);
                         break;
                 }
                 executed.push({ run: 0, type: action.type, status: 'sent', timestamp: new Date().toISOString() });
@@ -789,7 +791,7 @@ export class ActionDispatcher {
         await fetch(config.url, { method, headers, body });
     }
 
-    private async triggerPipeline(action: RequestedAction): Promise<void> {
+    private async triggerPipeline(action: RequestedAction, agentName: string): Promise<void> {
         // POST to Azure DevOps Pipeline Run API
         const config = this.config['pipeline-trigger'];
         if (!config) throw new Error('Pipeline trigger config not set');
@@ -945,7 +947,7 @@ export function buildAgentPrompt(instruction: string, state: AgentState): string
             for (const run of state.recentRuns) {
                 prompt += `- **Run ${run.runId}** (${run.timestamp}): ${run.findings}\n`;
                 if (run.actions.length > 0) {
-                    prompt += `  Actions: ${run.actions.map(a => a.action).join(', ')}\n`;
+                    prompt += `  Actions: ${run.actions.map(a => a.type).join(', ')}\n`;
                 }
             }
             prompt += '\n';
@@ -955,6 +957,33 @@ export function buildAgentPrompt(instruction: string, state: AgentState): string
     prompt += `## Task\n\nExecute your instruction now. Use tools to gather data, assess the situation, and take any actions required by your instruction.\n`;
 
     return prompt;
+}
+
+/**
+ * Structured output from the LLM's final response.
+ * Matches the JSON schema described in AGENT_SYSTEM_PROMPT's "Output Format" section.
+ */
+export interface AgentOutput {
+    summary: string;                   // updated rolling summary
+    findings: string;                  // what was found this run
+    assessment: string;                // LLM's interpretation and reasoning
+    activeIssues: {
+        id: string;
+        fingerprint: string;
+        title: string;
+        consecutiveDetections: number;
+        trend: 'increasing' | 'stable' | 'decreasing';
+        counts: number[];
+        lastSeen: string;              // ISO 8601
+    }[];
+    resolvedIssues: string[];          // issue IDs that are now resolved
+    actions: RequestedAction[];        // actions the agent wants to take
+    stateChanges: {
+        issuesCreated: string[];
+        issuesUpdated: string[];
+        issuesResolved: string[];
+        summaryUpdated: boolean;
+    };
 }
 
 export function parseAgentOutput(content: string): AgentOutput {
@@ -1174,6 +1203,11 @@ Environment variables override config file values (same pattern as existing conf
 const mcpConfig = loadConfigFromFile(options.config, options.profile);
 
 // 2. Load raw JSON to extract agents section (NOT part of MCPConfig)
+// Resolve config path using same logic as loadConfigFromFile:
+// explicit --config flag → BCTB_WORKSPACE_PATH/.bctb-config.json → cwd/.bctb-config.json
+const resolvedConfigPath = options.config
+    || (process.env.BCTB_WORKSPACE_PATH && path.join(process.env.BCTB_WORKSPACE_PATH, '.bctb-config.json'))
+    || '.bctb-config.json';
 const rawConfig = JSON.parse(fs.readFileSync(resolvedConfigPath, 'utf-8'));
 const agentsConfig: AgentConfigSection = rawConfig.agents;
 if (!agentsConfig?.llm) {
@@ -1635,7 +1669,7 @@ Result: Teams message sent.
       "trend": "increasing",
       "counts": [47, 52, 61],
       "actionsTaken": [
-        { "run": 3, "action": "teams-webhook", "timestamp": "2026-02-24T12:00:30Z", "status": "sent" }
+        { "run": 3, "type": "teams-webhook", "timestamp": "2026-02-24T12:00:30Z", "status": "sent" }
       ]
     }
   ],
@@ -1656,7 +1690,7 @@ Result: Teams message sent.
       "durationMs": 45000,
       "toolCalls": ["get_event_catalog", "query_telemetry", "get_tenant_mapping"],
       "findings": "Sales Turbo errors persisting (61, up from 52). Third consecutive detection — triggered Teams notification.",
-      "actions": [{ "run": 3, "action": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T12:00:30Z" }]
+      "actions": [{ "run": 3, "type": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T12:00:30Z" }]
     },
     {
       "runId": 2,
@@ -1785,7 +1819,7 @@ If degradation persists 5+ runs → email to dev lead
       "trend": "increasing",
       "counts": [3500, 4800],
       "actionsTaken": [
-        { "run": 3, "action": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T12:00:25Z" }
+        { "run": 3, "type": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T12:00:25Z" }
       ]
     }
   ]
@@ -1892,7 +1926,7 @@ vs success status. This appears in the run's findings even when no issues are fl
       "trend": "increasing",
       "counts": [45, 127],
       "actionsTaken": [
-        { "run": 3, "action": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T12:00:20Z" }
+        { "run": 3, "type": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T12:00:20Z" }
       ]
     }
   ]
@@ -2031,8 +2065,8 @@ After 24 hours of consistent stability, user pauses the agent.
       "trend": "stable",
       "counts": [5.8, 5.7],
       "actionsTaken": [
-        { "run": 4, "action": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T14:15:20Z" },
-        { "run": 4, "action": "email-smtp", "status": "sent", "timestamp": "2026-02-24T14:15:22Z" }
+        { "run": 4, "type": "teams-webhook", "status": "sent", "timestamp": "2026-02-24T14:15:20Z" },
+        { "run": 4, "type": "email-smtp", "status": "sent", "timestamp": "2026-02-24T14:15:22Z" }
       ]
     }
   ]

@@ -1593,3 +1593,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-25**  Design doc review for Agentic Monitoring (Issue #98) [Entry: 955f86b5-7760-47ae-9aec-3052e0def025]
   - **Why:** User requested a review of the design document for impossibilities and inconsistencies before starting implementation.
   - **How:** Full document review against actual codebase  found 12 issues (field naming inconsistency, missing type defs, undefined variables, LOC underestimate, etc.). None are architectural blockers.
+- **2026-02-25**  Fix 4 inconsistencies in Agentic Monitoring Design.md [Entry: a022d484-ca6e-490c-96b5-0175bcb3abd1]
+  - **Why:** Correct inconsistencies found during review: action vs type field mismatch, undefined agentName in triggerPipeline, undefined resolvedConfigPath, missing AgentOutput interface.
+  - **How:** Replaced all 'action' fields with 'type' in examples (7 occurrences), added agentName param to triggerPipeline/dispatch, defined resolvedConfigPath with path resolution logic, added full AgentOutput interface definition.
