@@ -1632,3 +1632,7 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-25** — Live-test markdown report + fix modelName in LLMProvider [Entry: 6d26180c-74f4-4e6e-a381-c1371a9e5465]
   - **Why:** Verify .md runs are generated and fix model name showing as 'llm-provider' instead of actual model.
   - **How:** Added modelName field to LLMProvider interface, implemented in Anthropic/Azure OpenAI providers, updated mock LLMs in tests.
+
+- **2026-02-26** — Completed agentic monitoring documentation [Entry: 925cb1b1-7453-49f0-9e9c-40b2ac93e8c8]
+  - **Why:** Finalise all doc gaps vs Design.md Sections 10 and 12.
+  - **How:** Added full Agentic Monitoring section to UserGuide.md and README.md; 564/564 tests pass.

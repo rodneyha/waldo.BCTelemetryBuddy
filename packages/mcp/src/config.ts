@@ -408,5 +408,30 @@ export function initConfig(outputPath: string): void {
         ]
     };
 
-    fs.writeFileSync(outputPath, JSON.stringify(template, null, 2));
+    // Merge in the agents section template (not part of MCPConfig/ProfiledConfig but lives in same file)
+    const agentsTemplate = {
+        agents: {
+            llm: {
+                provider: 'azure-openai',
+                endpoint: '${AZURE_OPENAI_ENDPOINT}',
+                deployment: 'gpt-4o',
+                apiVersion: '2024-10-21'
+            },
+            defaults: {
+                maxToolCalls: 20,
+                maxTokens: 4096,
+                contextWindowRuns: 5,
+                resolvedIssueTTLDays: 30,
+                toolScope: 'read-only'
+            },
+            actions: {
+                'teams-webhook': {
+                    url: '${TEAMS_WEBHOOK_URL}'
+                }
+            }
+        }
+    };
+
+    const combined = { ...template, ...agentsTemplate };
+    fs.writeFileSync(outputPath, JSON.stringify(combined, null, 2));
 }

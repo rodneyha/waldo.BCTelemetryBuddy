@@ -49,6 +49,7 @@ See [MIGRATION.md](../MIGRATION.md) for migration details.
 12. [Migrating from v0.2.x](#migrating-from-v02x)
 13. [Troubleshooting](#troubleshooting)
 14. [FAQ](#faq)
+15. [Agentic Monitoring](#agentic-monitoring)
 
 ---
 
@@ -1556,7 +1557,389 @@ VSCode will automatically notify you when updates are available. You can also:
 
 ---
 
-## Next Steps
+## Agentic Monitoring
+
+BC Telemetry Buddy MCP includes a built-in agent runtime for **autonomous, scheduled telemetry monitoring**. Agents run via CI/CD pipelines (GitHub Actions, Azure DevOps) or locally, query telemetry with LLM reasoning, track issues across runs, and take actions like sending Teams notifications or triggering pipelines — all without manual intervention.
+
+### What an Agent Is
+
+```
+An agent = instruction (natural language) + accumulated state + MCP tools + LLM reasoning
+```
+
+You write a plain-text `instruction.md` describing what to monitor: which events, what thresholds, when to escalate. The agent does the rest — it calls MCP tools, interprets results, and takes action based on your instruction.
+
+### Overview
+
+| Concept | Description |
+|---------|-------------|
+| **instruction.md** | Plain-text file describing what the agent monitors and how it escalates |
+| **state.json** | Agent memory — accumulated findings, active issues, recent run summaries |
+| **runs/** | Audit trail — one `.json` + `.md` file per run |
+| **LLM Provider** | Azure OpenAI (default) or Anthropic/Claude — processes instructions and calls tools |
+| **Actions** | Teams webhook, SMTP email, Graph API email, generic webhook, Azure DevOps pipeline |
+
+### Prerequisites for Agentic Monitoring
+
+In addition to the standard BCTB prerequisites, you need:
+
+- **BC Telemetry Buddy MCP** installed globally: `npm install -g bc-telemetry-buddy-mcp`
+- **Azure OpenAI** deployment (GPT-4o recommended) **OR** **Anthropic API** key
+- **Workspace** — a directory (Git repo) containing `.bctb-config.json` with an `agents` section
+
+### Quick Start
+
+#### 1. Add the Agents Section to Your Config
+
+Add an `agents` section to your `.bctb-config.json`:
+
+```json
+{
+  "profiles": { ... },
+  "defaultProfile": "default",
+  "agents": {
+    "llm": {
+      "provider": "azure-openai",
+      "endpoint": "https://your-resource.openai.azure.com",
+      "deployment": "gpt-4o",
+      "apiVersion": "2024-10-21"
+    },
+    "defaults": {
+      "maxToolCalls": 20,
+      "contextWindowRuns": 5,
+      "toolScope": "read-only"
+    },
+    "actions": {
+      "teams-webhook": {
+        "url": "https://your-teams-webhook-url"
+      }
+    }
+  }
+}
+```
+
+> **Secrets via environment variables:** Never store API keys in the config file. Use:
+> - `AZURE_OPENAI_KEY` — Azure OpenAI API key
+> - `ANTHROPIC_API_KEY` — Anthropic API key (if using Anthropic)
+> - `TEAMS_WEBHOOK_URL` — Override Teams webhook URL
+> - `SMTP_PASSWORD` — SMTP relay password
+> - `GRAPH_CLIENT_SECRET` — Microsoft Graph client secret
+> - `DEVOPS_PAT` — Azure DevOps Personal Access Token
+
+#### 2. Create Your First Agent
+
+```bash
+bctb-mcp agent start "Monitor BC error rates. Alert on Teams when errors exceed 100/hour or increase by 200% vs previous runs." --name error-monitor
+```
+
+This creates:
+- `agents/error-monitor/instruction.md` — your instruction
+- `agents/error-monitor/state.json` — initial empty state
+- `agents/error-monitor/runs/` — empty audit trail directory
+
+#### 3. Run the Agent
+
+```bash
+export AZURE_OPENAI_KEY=your-key-here
+bctb-mcp agent run error-monitor --once
+```
+
+Output:
+```
+Running agent: error-monitor...
+
+✓ Run #1 completed in 12.3s
+  Tool calls: 4
+  Tokens: 2847 (2341 prompt + 506 completion)
+  Findings: First run. Error rate baseline: 23/hour across 5 event types. No thresholds exceeded.
+```
+
+#### 4. Check State & Run Log
+
+```bash
+# View current state
+cat agents/error-monitor/state.json
+
+# View run history
+bctb-mcp agent history error-monitor
+```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `bctb-mcp agent start <instruction> --name <name>` | Create a new agent |
+| `bctb-mcp agent run <name> --once` | Run one monitoring pass |
+| `bctb-mcp agent run-all --once` | Run all active agents |
+| `bctb-mcp agent list` | List all agents with status |
+| `bctb-mcp agent history <name> [--limit N]` | Show run history |
+| `bctb-mcp agent pause <name>` | Pause an agent (skipped by `run-all`) |
+| `bctb-mcp agent resume <name>` | Resume a paused agent |
+
+All commands support `--config <path>` to point to a specific config file, and `--profile <name>` to select a config profile.
+
+### Writing Effective Agent Instructions
+
+The instruction is everything. Write it like you're explaining the task to a knowledgeable colleague:
+
+```markdown
+Monitor AppSource validation telemetry for my extensions.
+
+Check for validation failures (RT0005 events with error status),
+categorize by extension name and failure type.
+
+If failures persist across 3 consecutive checks, post to the Teams channel.
+If failures persist across 6 consecutive checks, send an email to the dev lead.
+
+Focus on the last 2 hours of data each run.
+Ignore test tenants (any tenant with "test" or "sandbox" in the company name).
+```
+
+**Best practices:**
+- Be specific about BC event IDs when you know them (RT0005, LC0010, RT0006, etc.)
+- Define thresholds clearly: "exceeds 100", "p95 > 5 seconds", "increased by 200%"
+- Describe escalation steps: "If X for N consecutive checks, do Y"
+- Describe what to ignore (test tenants, known-noisy events)
+- Keep it under 500 words — the LLM processes it on every run
+
+### Example Agent Instructions (Ready to Use)
+
+The MCP package ships with four fully-documented templates you can copy directly:
+
+| Template | Use Case | Location |
+|----------|----------|----------|
+| AppSource Validation | ISVs watching for extension install/update failures | `templates/agents/appsource-validation/` |
+| Performance Monitor | Track page load p95, report execution, AL method timing | `templates/agents/performance-monitoring/` |
+| Error Rate Monitor | Catch-all error rate monitoring with dynamic event discovery | `templates/agents/error-rate-monitoring/` |
+| Post-Deployment Watch | Short-lived regression monitor after deployments | `templates/agents/post-deployment-check/` |
+
+To use a template:
+```bash
+# Copy the template to your workspace
+cp -r "$(npm root -g)/bc-telemetry-buddy-mcp/templates/agents/performance-monitoring" agents/
+
+# Run it
+bctb-mcp agent run performance-monitoring --once
+```
+
+### Running Agents on a Schedule (CI/CD)
+
+Agents are designed to run in CI/CD pipelines. Each run queries telemetry, updates state, and the pipeline commits the updated state back to the repository.
+
+#### GitHub Actions
+
+Copy `node_modules/bc-telemetry-buddy-mcp/templates/github-actions/telemetry-agent.yml` to `.github/workflows/`:
+
+```yaml
+name: Telemetry Monitoring Agents
+
+on:
+  schedule:
+    - cron: "0 * * * *"         # Hourly
+  workflow_dispatch:              # Also allow manual runs
+
+permissions:
+  contents: write                 # Required to commit updated agent state
+
+jobs:
+  run-agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm install -g bc-telemetry-buddy-mcp
+      - run: bctb-mcp agent run-all --once
+        env:
+          BCTB_AUTH_FLOW: client_credentials
+          BCTB_TENANT_ID: ${{ secrets.BCTB_TENANT_ID }}
+          BCTB_CLIENT_ID: ${{ secrets.BCTB_CLIENT_ID }}
+          BCTB_CLIENT_SECRET: ${{ secrets.BCTB_CLIENT_SECRET }}
+          BCTB_APP_INSIGHTS_ID: ${{ secrets.BCTB_APP_INSIGHTS_ID }}
+          BCTB_KUSTO_CLUSTER_URL: ${{ secrets.BCTB_KUSTO_CLUSTER_URL }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+      - name: Commit agent state
+        run: |
+          git config user.name "bctb-agent"
+          git config user.email "bctb-agent@noreply.github.com"
+          git add agents/
+          git diff --cached --quiet || git commit -m "agent: run $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
+```
+
+See the full template at `templates/github-actions/README.md` for detailed setup instructions including all required secrets.
+
+#### Azure DevOps
+
+Copy `templates/azure-devops/azure-pipelines.yml` to your repository root. Create a variable group named `bctb-secrets` (Pipelines → Library → Variable groups) with the same variables as the GitHub Actions secrets above.
+
+See `templates/azure-devops/README.md` for the complete setup guide.
+
+### Action Types
+
+Agents can take actions when issues are detected. Configure the action in the `agents.actions` section of `.bctb-config.json`:
+
+#### Teams Webhook
+
+```json
+"agents": {
+  "actions": {
+    "teams-webhook": {
+      "url": "${TEAMS_WEBHOOK_URL}"
+    }
+  }
+}
+```
+
+In your instruction: `"If failures persist across 3 consecutive checks, post to Teams."`
+
+#### Email via SMTP
+
+```json
+"agents": {
+  "actions": {
+    "email-smtp": {
+      "host": "smtp.sendgrid.net",
+      "port": 587,
+      "secure": false,
+      "auth": { "user": "apikey" },
+      "from": "agent@yourcompany.com",
+      "defaultTo": ["devlead@yourcompany.com"]
+    }
+  }
+}
+```
+
+Set `SMTP_PASSWORD` environment variable. In your instruction: `"Send an email to the dev lead."`
+
+#### Email via Microsoft Graph
+
+```json
+"agents": {
+  "actions": {
+    "email-graph": {
+      "tenantId": "your-tenant-id",
+      "clientId": "your-client-id",
+      "from": "agent@yourcompany.com",
+      "defaultTo": ["devlead@yourcompany.com"]
+    }
+  }
+}
+```
+
+Set `GRAPH_CLIENT_SECRET` environment variable. App Registration needs `Mail.Send` permission.
+
+#### Generic Webhook (Slack, PagerDuty, etc.)
+
+```json
+"agents": {
+  "actions": {
+    "generic-webhook": {
+      "url": "https://hooks.slack.com/services/xxx/yyy/zzz",
+      "method": "POST",
+      "headers": { "Content-Type": "application/json" }
+    }
+  }
+}
+```
+
+#### Azure DevOps Pipeline Trigger
+
+```json
+"agents": {
+  "actions": {
+    "pipeline-trigger": {
+      "orgUrl": "https://dev.azure.com/yourorg",
+      "project": "BC-Ops",
+      "pipelineId": 42
+    }
+  }
+}
+```
+
+Set `DEVOPS_PAT` environment variable.
+
+### LLM Provider Configuration
+
+#### Azure OpenAI (Default)
+
+```json
+"agents": {
+  "llm": {
+    "provider": "azure-openai",
+    "endpoint": "https://your-resource.openai.azure.com",
+    "deployment": "gpt-4o",
+    "apiVersion": "2024-10-21"
+  }
+}
+```
+
+Environment variable: `AZURE_OPENAI_KEY`
+
+#### Anthropic / Claude
+
+```json
+"agents": {
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-opus-4-5"
+  }
+}
+```
+
+Environment variable: `ANTHROPIC_API_KEY`
+
+### Agent State and Memory
+
+Each agent maintains state in `agents/<name>/state.json`:
+
+```json
+{
+  "agentName": "error-monitor",
+  "lastRun": "2026-02-26T10:00:00Z",
+  "runCount": 12,
+  "status": "active",
+  "summary": "Monitoring since Feb 24. Error rates stable at 20-30/hour. RT0005 spike on Feb 25 (85/hour) self-resolved within 1 hour.",
+  "activeIssues": [],
+  "resolvedIssues": [...],
+  "recentRuns": [...]
+}
+```
+
+**Context compaction:** The `recentRuns` array is a sliding window (default: 5 runs). When a run falls out of the window, the LLM folds it into the `summary`. This keeps `state.json` bounded regardless of how many runs have occurred.
+
+**Resolved issue pruning:** Issues in `resolvedIssues` are automatically pruned after 30 days (configurable via `resolvedIssueTTLDays`).
+
+### Advanced Agent Configuration
+
+Full `defaults` reference:
+
+```json
+"agents": {
+  "defaults": {
+    "maxToolCalls": 20,          // Max LLM tool calls per run before aborting
+    "maxTokens": 4096,           // Max tokens per LLM response
+    "contextWindowRuns": 5,      // Sliding window size for recentRuns
+    "resolvedIssueTTLDays": 30,  // Days to keep resolved issues
+    "toolScope": "read-only"     // "read-only" or "full" (full allows save_query etc.)
+  }
+}
+```
+
+### Troubleshooting Agents
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| `No agents.llm section in config` | Missing agents config | Add `agents.llm` section to `.bctb-config.json` |
+| `AZURE_OPENAI_KEY not set` | Missing env var | Set `AZURE_OPENAI_KEY` environment variable |
+| `Agent exceeded max tool calls` | LLM loop / unclear instruction | Simplify instruction; increase `maxToolCalls` |
+| No findings after first run | Config or App Insights issue | Verify `BCTB_APP_INSIGHTS_ID` is correct; check with `get_event_catalog` |
+| Teams notification not sent | Webhook URL issue or not configured | Check `agents.actions.teams-webhook.url` and `TEAMS_WEBHOOK_URL` env var |
+| Agent paused after error | Not applicable — errors don't auto-pause | Check the run log in `agents/<name>/runs/` |
+| Git push fails in pipeline | Branch protection | Ensure pipeline has `contents: write` permission (GitHub) or Contribute on repo (Azure DevOps) |
+
+---
+
 
 Now that you're set up:
 

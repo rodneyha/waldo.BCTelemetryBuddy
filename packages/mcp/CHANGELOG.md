@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Agentic Autonomous Telemetry Monitoring** (`src/agent/`) — complete implementation of the autonomous monitoring runtime described in `Instructions/4. Agentic Monitoring/Design.md`
+  - `AgentRuntime` (`runtime.ts`): ReAct loop that drives agents through LLM reasoning + tool calls
+  - `AgentContextManager` (`context.ts`): Manages agent state, instruction, run logs, and sliding-window context compaction
+  - `ActionDispatcher` (`actions.ts`): Executes external actions — Teams webhook, SMTP email, Graph API email, generic webhooks, Azure DevOps pipeline triggers
+  - `prompts.ts`: System prompt, prompt builder, structured output parser, tool scope filtering
+  - `report.ts`: Markdown run report generator (creates human-readable `.md` alongside `.json` audit trail)
+  - `providers/anthropic.ts`: Anthropic/Claude LLM provider (translates OpenAI-style tool calls ↔ Anthropic Messages API)
+- **Agent CLI commands** (`bctb-mcp agent <command>`):
+  - `agent start <instruction> --name <name>` — Create a new monitoring agent
+  - `agent run <name> --once` — Run a single monitoring pass
+  - `agent run-all --once` — Run all active agents
+  - `agent list` — List all agents with status and issue counts
+  - `agent history <name> --limit <n>` — Show run history
+  - `agent pause <name>` / `agent resume <name>` — Set agent status
+- **LLM Provider Abstraction**: `LLMProvider` interface decouples runtime from any specific SDK. Supports Azure OpenAI (default) and Anthropic/Claude.
+- **Pipeline Templates** (`templates/`):
+  - `templates/github-actions/telemetry-agent.yml` + `README.md` — GitHub Actions hourly schedule with state commit
+  - `templates/azure-devops/azure-pipelines.yml` + `README.md` — Azure DevOps pipeline equivalent
+  - `templates/agents/` — Four fully-documented example agent instruction templates:
+    - `appsource-validation` — Monitors AppSource extension validation failures
+    - `performance-monitoring` — Tracks page/report/AL performance with p95 thresholds
+    - `error-rate-monitoring` — Catch-all error rate monitor with dynamic event discovery
+    - `post-deployment-check` — Short-lived post-deployment regression monitor
+- **Config Schema** (`config-schema.json`): Added `agents` section schema with full type definitions for LLM config, defaults, and all 5 action types
+- **Config Template** (`bctb-mcp init`): Now includes agents section template with Azure OpenAI placeholder
+- **7 new test files** (`src/__tests__/agent/`): `context.test.ts`, `runtime.test.ts`, `runtime.integration.test.ts`, `actions.test.ts`, `prompts.test.ts`, `providers.test.ts`, `report.test.ts`, `cli-agent.test.ts` — 18+ new tests; all 564 MCP tests pass
+
 ## [3.0.2] - 2026-02-26
 
 ### Fixed

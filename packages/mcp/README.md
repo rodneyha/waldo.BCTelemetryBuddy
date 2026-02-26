@@ -12,9 +12,10 @@ BC Telemetry Buddy MCP Server is a **standalone NPM package** that enables AI as
 **Key Features:**
 - 🚀 **Standalone Package**: Install globally with `npm install -g bc-telemetry-buddy-mcp` - no dependencies on VSCode extension
 - 🤖 **AI Assistant Ready**: Works with GitHub Copilot, Claude Desktop, Claude Code, Copilot Studio, and Cursor via the official MCP SDK over stdio
-- 🔧 **CLI Interface**: `bctb-mcp` command with init, validate, test-auth, and start subcommands
+- 🔧 **CLI Interface**: `bctb-mcp` command with init, validate, test-auth, start, and **agent** subcommands
 - 📁 **File-Based Config**: Simple `.bctb-config.json` with schema validation and environment variable substitution
 - 👥 **Multi-Profile Support**: Manage multiple customers/environments in single config file with profile switching
+- 🤖 **Agentic Monitoring**: Autonomous scheduled telemetry monitoring via CI/CD pipelines — LLM-powered reasoning, issue tracking, Teams/email alerts
 - 🔌 **Optional for VSCode**: VSCode extension works standalone; MCP only required for chat participant features
 - 🔄 **Automatic Updates**: Update notifications on startup when newer versions are available on NPM
 - 🧪 **Comprehensive Testing**: 70%+ test coverage with dedicated test suites for Claude Desktop workflows
@@ -262,6 +263,86 @@ bctb-mcp --version
 # Show help
 bctb-mcp --help
 ```
+
+## Agentic Monitoring
+
+BC Telemetry Buddy MCP includes a built-in **autonomous agent runtime** for scheduled telemetry monitoring. Agents use an LLM (Azure OpenAI or Anthropic) to query telemetry, reason about findings, track issues across runs, and take action — all without manual intervention.
+
+### Agent CLI Commands
+
+```bash
+# Create a new monitoring agent
+bctb-mcp agent start "<instruction>" --name <agent-name>
+
+# Run one monitoring pass
+bctb-mcp agent run <agent-name> --once
+
+# Run all active agents
+bctb-mcp agent run-all --once
+
+# List agents with status
+bctb-mcp agent list
+
+# View run history
+bctb-mcp agent history <agent-name> [--limit 10]
+
+# Pause / resume an agent
+bctb-mcp agent pause <agent-name>
+bctb-mcp agent resume <agent-name>
+```
+
+### Minimal Config for Agents
+
+Add an `agents` section to `.bctb-config.json`:
+
+```json
+{
+  "profiles": { ... },
+  "defaultProfile": "default",
+  "agents": {
+    "llm": {
+      "provider": "azure-openai",
+      "endpoint": "https://your-resource.openai.azure.com",
+      "deployment": "gpt-4o",
+      "apiVersion": "2024-10-21"
+    },
+    "actions": {
+      "teams-webhook": { "url": "${TEAMS_WEBHOOK_URL}" }
+    }
+  }
+}
+```
+
+Set `AZURE_OPENAI_KEY` environment variable (or `ANTHROPIC_API_KEY` for Anthropic).
+
+### CI/CD Pipeline Integration
+
+Copy a ready-made pipeline template from the npm package:
+
+```bash
+# GitHub Actions
+cp node_modules/bc-telemetry-buddy-mcp/templates/github-actions/telemetry-agent.yml .github/workflows/
+
+# Azure DevOps
+cp node_modules/bc-telemetry-buddy-mcp/templates/azure-devops/azure-pipelines.yml ./
+```
+
+### Pre-Built Agent Templates
+
+| Template | Use Case |
+|----------|----------|
+| `appsource-validation` | Monitor extension install/update failures |
+| `performance-monitoring` | Track p95 latencies and slow operations |
+| `error-rate-monitoring` | Catch-all error rate monitoring |
+| `post-deployment-check` | Short-lived regression detection after deployments |
+
+```bash
+# Copy a template to your workspace
+cp -r node_modules/bc-telemetry-buddy-mcp/templates/agents/performance-monitoring agents/
+bctb-mcp agent run performance-monitoring --once
+```
+
+See the [User Guide](https://github.com/waldo1001/waldo.BCTelemetryBuddy/blob/main/docs/UserGuide.md#agentic-monitoring) for full docs including action types, state management, and troubleshooting.
 
 ## Features
 

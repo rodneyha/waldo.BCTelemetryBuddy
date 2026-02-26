@@ -98,6 +98,103 @@
             "items": {
                 "$ref": "#/definitions/reference"
             }
+        },
+        "agents": {
+            "type": "object",
+            "description": "Agentic Autonomous Telemetry Monitoring — configuration for scheduled monitoring agents that run via bctb-mcp agent commands or CI/CD pipelines.",
+            "properties": {
+                "llm": {
+                    "type": "object",
+                    "description": "LLM provider configuration for agent reasoning.",
+                    "properties": {
+                        "provider": {
+                            "type": "string",
+                            "enum": [
+                                "azure-openai",
+                                "anthropic"
+                            ],
+                            "description": "LLM provider. 'azure-openai' uses AZURE_OPENAI_KEY env var; 'anthropic' uses ANTHROPIC_API_KEY env var.",
+                            "default": "azure-openai"
+                        },
+                        "endpoint": {
+                            "type": "string",
+                            "description": "Azure OpenAI endpoint URL (azure-openai only). Can also be set via AZURE_OPENAI_ENDPOINT env var."
+                        },
+                        "deployment": {
+                            "type": "string",
+                            "description": "Azure OpenAI deployment name or Anthropic model (e.g. 'gpt-4o', 'claude-opus-4-5'). Can also be set via AZURE_OPENAI_DEPLOYMENT / ANTHROPIC_MODEL env var."
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": "Alias for 'deployment'. Preferred for Anthropic configs (e.g. 'claude-opus-4-5')."
+                        },
+                        "apiVersion": {
+                            "type": "string",
+                            "description": "Azure OpenAI API version (azure-openai only).",
+                            "default": "2024-10-21"
+                        }
+                    },
+                    "required": [
+                        "provider"
+                    ]
+                },
+                "defaults": {
+                    "type": "object",
+                    "description": "Default runtime settings applied to all agents.",
+                    "properties": {
+                        "maxToolCalls": {
+                            "type": "number",
+                            "description": "Maximum LLM tool calls per agent run before aborting.",
+                            "default": 20
+                        },
+                        "maxTokens": {
+                            "type": "number",
+                            "description": "Maximum tokens per LLM response.",
+                            "default": 4096
+                        },
+                        "contextWindowRuns": {
+                            "type": "number",
+                            "description": "Sliding window size for recent runs kept in state.json.",
+                            "default": 5
+                        },
+                        "resolvedIssueTTLDays": {
+                            "type": "number",
+                            "description": "Days to keep resolved issues in state.json before pruning.",
+                            "default": 30
+                        },
+                        "toolScope": {
+                            "type": "string",
+                            "enum": [
+                                "read-only",
+                                "full"
+                            ],
+                            "description": "Tool access scope for agents. 'read-only' prevents save_query and other write tools.",
+                            "default": "read-only"
+                        }
+                    }
+                },
+                "actions": {
+                    "type": "object",
+                    "description": "External action configurations (Teams, email, webhooks, pipelines). Secrets should be provided as environment variables, not stored here.",
+                    "properties": {
+                        "teams-webhook": {
+                            "$ref": "#/definitions/teamsWebhookAction"
+                        },
+                        "email-smtp": {
+                            "$ref": "#/definitions/emailSmtpAction"
+                        },
+                        "email-graph": {
+                            "$ref": "#/definitions/emailGraphAction"
+                        },
+                        "generic-webhook": {
+                            "$ref": "#/definitions/genericWebhookAction"
+                        },
+                        "pipeline-trigger": {
+                            "$ref": "#/definitions/pipelineTriggerAction"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -201,6 +298,160 @@
                 "name",
                 "type",
                 "url"
+            ]
+        },
+        "teamsWebhookAction": {
+            "type": "object",
+            "description": "Microsoft Teams Incoming Webhook action.",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Teams Incoming Webhook URL. Can also be set via TEAMS_WEBHOOK_URL env var."
+                }
+            },
+            "required": [
+                "url"
+            ]
+        },
+        "emailSmtpAction": {
+            "type": "object",
+            "description": "Email via SMTP relay (SendGrid, Office 365, etc.).",
+            "properties": {
+                "host": {
+                    "type": "string",
+                    "description": "SMTP host"
+                },
+                "port": {
+                    "type": "number",
+                    "description": "SMTP port (587 for TLS, 465 for SSL)",
+                    "default": 587
+                },
+                "secure": {
+                    "type": "boolean",
+                    "description": "Use TLS (true for port 465)",
+                    "default": false
+                },
+                "auth": {
+                    "type": "object",
+                    "properties": {
+                        "user": {
+                            "type": "string",
+                            "description": "SMTP username or 'apikey' for SendGrid"
+                        },
+                        "pass": {
+                            "type": "string",
+                            "description": "SMTP password (prefer SMTP_PASSWORD env var)"
+                        }
+                    },
+                    "required": [
+                        "user"
+                    ]
+                },
+                "from": {
+                    "type": "string",
+                    "description": "From address"
+                },
+                "defaultTo": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Default recipient email addresses"
+                }
+            },
+            "required": [
+                "host",
+                "port",
+                "auth",
+                "from",
+                "defaultTo"
+            ]
+        },
+        "emailGraphAction": {
+            "type": "object",
+            "description": "Email via Microsoft Graph API (requires Mail.Send app permission).",
+            "properties": {
+                "tenantId": {
+                    "type": "string",
+                    "description": "Azure AD tenant ID"
+                },
+                "clientId": {
+                    "type": "string",
+                    "description": "App Registration client ID with Mail.Send permission"
+                },
+                "from": {
+                    "type": "string",
+                    "description": "Sender mailbox UPN (the mailbox the app sends from)"
+                },
+                "defaultTo": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Default recipient email addresses"
+                }
+            },
+            "required": [
+                "tenantId",
+                "clientId",
+                "from",
+                "defaultTo"
+            ]
+        },
+        "genericWebhookAction": {
+            "type": "object",
+            "description": "Generic HTTP webhook (Slack, PagerDuty, custom endpoints).",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Webhook URL"
+                },
+                "method": {
+                    "type": "string",
+                    "enum": [
+                        "POST",
+                        "PUT",
+                        "PATCH"
+                    ],
+                    "default": "POST"
+                },
+                "headers": {
+                    "type": "object",
+                    "description": "Additional HTTP headers (e.g. Authorization for Slack or PagerDuty)",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "url"
+            ]
+        },
+        "pipelineTriggerAction": {
+            "type": "object",
+            "description": "Azure DevOps pipeline trigger action.",
+            "properties": {
+                "orgUrl": {
+                    "type": "string",
+                    "description": "Azure DevOps organization URL (e.g. https://dev.azure.com/contoso)"
+                },
+                "project": {
+                    "type": "string",
+                    "description": "Azure DevOps project name"
+                },
+                "pipelineId": {
+                    "type": "number",
+                    "description": "Pipeline definition ID"
+                },
+                "pat": {
+                    "type": "string",
+                    "description": "Personal Access Token (prefer DEVOPS_PAT env var)"
+                }
+            },
+            "required": [
+                "orgUrl",
+                "project",
+                "pipelineId"
             ]
         }
     }

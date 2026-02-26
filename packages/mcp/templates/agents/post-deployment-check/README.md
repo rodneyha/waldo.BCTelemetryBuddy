@@ -47,9 +47,13 @@ schedules:
   - cron: '*/15 * * * *'
 ```
 
-Option B — run continuously:
+Option B — run via script loop (keep the pipeline running frequently):
 ```bash
-bctb-mcp agent run post-deployment-check --interval 15m
+# Run every 15 minutes for 24 hours
+for i in $(seq 1 96); do
+  bctb-mcp agent run post-deployment-check --once
+  sleep 900
+done
 ```
 
 ### Step 4: After 24 Hours of Stability
