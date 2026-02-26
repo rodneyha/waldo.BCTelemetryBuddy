@@ -1620,3 +1620,15 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-26** — Released MCP v3.0.2 patch [Entry: 359f6800-f00d-4012-859b-f1597ac49209]
   - **Why:** Fix for stdio-mode profile switching bug (ToolHandlers configFilePath fallback, PR #99 by @StefanMaron)
   - **How:** Bumped packages/mcp/package.json to 3.0.2, updated CHANGELOG.md, committed and pushed tag mcp-v3.0.2
+- **2026-02-25** — Created pipeline and agent templates for Agentic Monitoring [Entry: 53b8653e-78f4-477f-86d8-f59377457c00]
+  - **Why:** Design.md sections 9-11 require pipeline YAML templates (GitHub Actions, Azure DevOps) and 4 example agent instruction templates with comprehensive READMEs.
+  - **How:** Created 13 template files under packages/mcp/templates/ (2 pipeline YAMLs, 2 pipeline READMEs, 4 agent instruction.md files, 4 agent READMEs, 1 agents overview README). Final verification: 460 tests passing, clean compile, 96% agent line coverage.
+- **2026-02-25** — Added Anthropic/Claude LLM provider for agent runtime [Entry: 6cae0f8f-7de4-494f-bb64-84929e1f2aa2]
+  - **Why:** User wants to test the agent using Claude (Anthropic API key) instead of Azure OpenAI.
+  - **How:** Created src/agent/providers/anthropic.ts with translation layer (OpenAI tool format ↔ Anthropic Messages API). Updated types.ts (endpoint/deployment optional). Updated cli.ts to dispatch based on agents.llm.provider. 28 new tests. 488 total, all passing.
+- **2026-02-25** — Add per-run Markdown report generation [Entry: 73e206a7-92fc-4740-9f26-601127f11e1e]
+  - **Why:** Agent analyses produce JSON audit trails; user wants human-readable .md reports browsable in GitHub/VS Code per run
+  - **How:** Created src/agent/report.ts (generateRunReport), hooked into context.ts saveRunLog to co-write .md alongside .json, 38 new tests
+- **2026-02-25** — Live-test markdown report + fix modelName in LLMProvider [Entry: 6d26180c-74f4-4e6e-a381-c1371a9e5465]
+  - **Why:** Verify .md runs are generated and fix model name showing as 'llm-provider' instead of actual model.
+  - **How:** Added modelName field to LLMProvider interface, implemented in Anthropic/Azure OpenAI providers, updated mock LLMs in tests.

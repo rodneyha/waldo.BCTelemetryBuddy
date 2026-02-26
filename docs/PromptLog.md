@@ -2790,4 +2790,19 @@ Change instructions an business logic to do this."
 ### Entry ID: 359f6800-f00d-4012-859b-f1597ac49209 — 2026-02-26 00:52
 > "I just merged the PR - create a patch-release (and commit and push)"
 
+### Entry ID: 53b8653e-78f4-477f-86d8-f59377457c00 — 2026-02-25 22:38
+> "Continue implementing Agentic Monitoring (Issue #98): Create all pipeline templates (GitHub Actions, Azure DevOps) and all 4 example agent instruction templates (appsource-validation, performance-monitoring, error-rate-monitoring, post-deployment-check) per Design.md sections 9-11. Run final verification."
+
+---
+### Entry ID: 6cae0f8f-7de4-494f-bb64-84929e1f2aa2 — 2026-02-25 23:06
+> "Add Anthropic/Claude support to the agent LLM provider"
+
+---
+### Entry ID: 73e206a7-92fc-4740-9f26-601127f11e1e — 2026-02-25 23:31
+> "Would I be able to let the agent create MD files for every analysis, kind of make it readable in the repo?"
+
+---
+### Entry ID: 6d26180c-74f4-4e6e-a381-c1371a9e5465 — 2026-02-25 23:41
+> "Test it again, same folder same settings same everything, but now with the md doc"
+
 ---

@@ -23,6 +23,8 @@ module.exports = {
         '!src/__tests__/**',
         '!src/server.ts',  // Exclude MCP server entry point (requires full integration testing)
         '!src/cli.ts',  // Exclude CLI entry point (requires full integration testing)
+        '!src/agent/cli.ts',  // Exclude agent CLI entry point (requires full integration testing)
+        '!src/agent/index.ts',  // Exclude barrel re-export file
         '!src/version.ts',  // Exclude auto-generated version file
         '!src/mcpTelemetry.ts'  // Exclude telemetry (requires Application Insights integration testing)
     ],
