@@ -1660,3 +1660,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-26** — Install Agents uses config workspace [Entry: f86afc7a-93bb-4f31-93d2-f780d3fc900d]
   - **Why:** In multiroot workspaces, agents should be installed in the workspace folder where .bctb-config.json lives, not always the first folder.
   - **How:** Replaced getWorkspacePath() with findConfigWorkspace(outputChannel) in installAgentsCommand, so agents are created in the same folder the MCP config is loaded from.
+- **2026-02-26** — Extension v3.1.1 patch release + no-confirmation rule [Entry: 5945bcf5-d3a5-4348-b020-2333f7009561]
+  - **Why:** Release the Install Agents config-workspace fix; user wants Copilot to act without asking for confirmation.
+  - **How:** Bumped extension to 3.1.1, committed/tagged/pushed. Added Rule 0 (never ask for confirmation) to copilot-instructions.md, removed confirmation steps from release workflow.

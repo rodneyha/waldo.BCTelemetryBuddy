@@ -2842,3 +2842,7 @@ Change instructions an business logic to do this."
 > "When Running Install Agents, it should install the agents in the workspace that it has found the config (which is also uses to load the config from the MCP)"
 
 ---
+### Entry ID: 5945bcf5-d3a5-4348-b020-2333f7009561 — 2026-02-26 14:51
+> "Document, and patch release, please! + Go. When I ask to do something, why ask me for confirmation? Never do that - put it in your copilot-instructions!"
+
+---
