@@ -5,6 +5,12 @@ This file provides persistent instructions to GitHub Copilot (the AI assistant) 
 
 ## Rules for Copilot (you must follow these)
 
+### 0. Never ask for confirmation — just do it
+- When the user asks you to do something, **DO IT**. Do not ask "Ready to proceed?", "Should I commit?", or "Want me to continue?".
+- This applies to ALL actions: code changes, releases, git operations, file creation, etc.
+- If the user says "release", bump the version, update docs, commit, tag, and push — all in one go.
+- The only exception is Rule #1 below: if the user's *purpose* is unclear, ask for the "why" so it can be logged.
+
 ### 1. Always ask "why" if context is missing
 - If the user requests a code change, file creation, or refactoring **without explaining the purpose**, ask: **"What's the purpose of this change? I'll log it to the docs."**
 - Wait for the user to provide the reasoning before proceeding.
@@ -372,16 +378,9 @@ Ask clarifying questions if not specified:
 - Patch and minor updates do NOT trigger the release notes page
 - Update `ReleaseNotesProvider.ts` content when doing MAJOR releases to reflect new features
 
-### STEP 4: Ask for Confirmation
+### STEP 4: Commit and Push
 
-After making the version and CHANGELOG changes:
-1. **Show user the changes**: Display what versions were bumped to and what's in the CHANGELOGs
-2. **Ask for confirmation**: "Ready to commit and push the release?"
-3. **WAIT for user to confirm** before proceeding
-
-### STEP 5: Commit and Push (ONLY after user confirmation)
-
-Once user confirms, complete the release by committing and pushing:
+After making the version and CHANGELOG changes, immediately commit and push:
 
 ```powershell
 # Commit the version bump and CHANGELOG
@@ -395,7 +394,7 @@ git push origin main --tags
 
 This triggers the GitHub Actions workflow for build, test, and publish.
 
-### STEP 6: What Happens Next
+### STEP 5: What Happens Next
 
 After pushing:
 1. ✅ GitHub Actions workflows are triggered automatically
@@ -403,9 +402,9 @@ After pushing:
 3. ✅ Tests execute to validate the release
 4. ✅ Packages are published (Extension to VS Code Marketplace, MCP to NPM)
 
-### STEP 7: Monitor Release
+### STEP 6: Monitor Release
 
-After script completes, inform user:
+After pushing, inform user:
 ```
 🚀 Release initiated successfully!
 
@@ -421,8 +420,7 @@ For MCP: https://www.npmjs.com/package/bc-telemetry-buddy-mcp
 1. **ALWAYS check for unreleased commits FIRST** - Check git log for both components before asking user anything
 2. **ALWAYS bump versions manually FIRST** - Edit package.json and CHANGELOG.md before any git operations
 3. **Update ReleaseNotesProvider.ts for MAJOR extension releases** - Content must match new version features
-4. **Wait for user confirmation** - User reviews changes before you commit/push
-5. **Extension tags**: `v0.3.0` (no prefix)
+4. **Extension tags**: `v0.3.0` (no prefix)
 6. **MCP tags**: `mcp-v1.0.1` (mcp- prefix)
 7. **Cannot release both simultaneously** - Different tag formats required
 8. **Use semantic versioning** - patch (X.Y.Z+1), minor (X.Y+1.0), major (X+1.0.0)
@@ -446,10 +444,8 @@ You:
 4. Calculate new version (2.0.2)
 5. Update packages/mcp/package.json: `"version": "2.0.2"`
 6. Update packages/mcp/CHANGELOG.md: Add `## [2.0.2] - 2025-11-18` section with release notes
-7. Show user: "Bumped MCP to v2.0.2. CHANGELOG shows: [list changes]. Ready to commit and push?"
-8. Wait for user confirmation
-9. Run git commands to commit, tag, and push
-10. Inform user of monitoring links
+7. Commit, tag `mcp-v2.0.2`, and push
+8. Inform user of monitoring links
 
 **Error Handling:**
 - Git not clean → Show uncommitted files, ask user to commit or stash first
