@@ -2810,3 +2810,7 @@ Change instructions an business logic to do this."
 > "Continuation: write UserGuide.md Agentic Monitoring section body, update MCP README.md agent section, final test run."
 
 ---
+### Entry ID: 8f6e7996-a351-4f55-b984-25e8e6275c2e — 2026-02-26 12:26
+> "Continue implementation of Agent Monitoring Setup Wizard (8-step webview). Create AgentMonitoringSetupProvider.ts, wire up in extension.ts, build, add 25 tests."
+
+---

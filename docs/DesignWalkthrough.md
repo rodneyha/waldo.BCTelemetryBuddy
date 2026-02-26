@@ -1636,3 +1636,6 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-26** — Completed agentic monitoring documentation [Entry: 925cb1b1-7453-49f0-9e9c-40b2ac93e8c8]
   - **Why:** Finalise all doc gaps vs Design.md Sections 10 and 12.
   - **How:** Added full Agentic Monitoring section to UserGuide.md and README.md; 564/564 tests pass.
+- **2026-02-26** — Implemented Agent Monitoring Setup Wizard [Entry: 8f6e7996-a351-4f55-b984-25e8e6275c2e]
+  - **Why:** User requested an 8-step webview wizard to set up autonomous agent monitoring (LLM config, agent templates, actions, defaults, pipeline, test run).
+  - **How:** Created AgentMonitoringSetupProvider.ts (webview provider following SetupWizardProvider pattern), registered bctb.setupAgentMonitoring command in package.json, wired up in extension.ts, added 25 tests covering all message handlers/HTML content/lifecycle.

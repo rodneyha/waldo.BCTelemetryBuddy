@@ -7,6 +7,7 @@ import { ResultsWebview } from './resultsWebview';
 import { SetupWizardProvider } from './webviews/SetupWizardProvider';
 import { ProfileWizardProvider } from './webviews/ProfileWizardProvider';
 import { ReleaseNotesProvider } from './webviews/ReleaseNotesProvider';
+import { AgentMonitoringSetupProvider } from './webviews/AgentMonitoringSetupProvider';
 import { registerChatParticipant } from './chatParticipant';
 import { AGENT_DEFINITIONS } from './agentDefinitions';
 import { TelemetryService } from './services/telemetryService';
@@ -44,6 +45,7 @@ let profileManager: ProfileManager | null = null;
 let profileWizard: ProfileWizardProvider | null = null;
 let outputChannel: vscode.OutputChannel;
 let setupWizard: SetupWizardProvider | null = null;
+let agentMonitoringWizard: AgentMonitoringSetupProvider | null = null;
 let extensionContext: vscode.ExtensionContext;
 let vscodeAuthService: VSCodeAuthService | null = null;
 
@@ -450,6 +452,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Initialize profile wizard
     profileWizard = new ProfileWizardProvider(context.extensionUri, outputChannel);
+
+    // Initialize agent monitoring setup wizard
+    agentMonitoringWizard = new AgentMonitoringSetupProvider(context.extensionUri, outputChannel);
     outputChannel.appendLine('✓ ProfileWizardProvider initialized');
 
     // Initialize migration service
@@ -582,7 +587,10 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('bctb.setDefaultProfile', withCommandTelemetry('setDefaultProfile', () => setDefaultProfileCommand())),
         vscode.commands.registerCommand('bctb.manageProfiles', withCommandTelemetry('manageProfiles', () => manageProfilesCommand())),
         vscode.commands.registerCommand('bctb.checkForMCPUpdates', withCommandTelemetry('checkForMCPUpdates', () => checkForMCPUpdates(context, false))),
-        vscode.commands.registerCommand('bctb.resetTelemetryId', withCommandTelemetry('resetTelemetryId', () => resetTelemetryIdCommand(context)))
+        vscode.commands.registerCommand('bctb.resetTelemetryId', withCommandTelemetry('resetTelemetryId', () => resetTelemetryIdCommand(context))),
+        vscode.commands.registerCommand('bctb.setupAgentMonitoring', withCommandTelemetry('setupAgentMonitoring', async () => {
+            await agentMonitoringWizard?.show();
+        }))
     );
 
     // Register CodeLens provider for .kql files
