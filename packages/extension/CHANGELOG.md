@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-02-26
+
+### Fixed
+- **Install Agents targets config workspace**: `installAgentsCommand` now uses `findConfigWorkspace()` instead of `getWorkspacePath()`, so agents are installed in the workspace folder where `.bctb-config.json` was found — consistent with how the MCP config is loaded. Previously agents were always installed in the first workspace folder, which could be wrong in multiroot workspaces.
+
 ## [3.1.0] - 2026-02-26
 
 ### Added

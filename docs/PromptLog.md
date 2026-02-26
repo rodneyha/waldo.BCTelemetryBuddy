@@ -2834,3 +2834,11 @@ Change instructions an business logic to do this."
 > "User confirmed Config Discovery logging works in multiroot workspace — 3 folders scanned, config found in third folder (TelemetryAnalysis). Noted it scans 6 times during activation."
 
 ---
+### Entry ID: 9a9af79b-67a4-4220-ada2-824fe10d21bc — 2026-02-26 14:11
+> "Now document it, add all that is missing to the changelog! And release."
+
+---
+### Entry ID: f86afc7a-93bb-4f31-93d2-f780d3fc900d — 2026-02-26 14:35
+> "When Running Install Agents, it should install the agents in the workspace that it has found the config (which is also uses to load the config from the MCP)"
+
+---

@@ -1654,3 +1654,9 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-26** — Multiroot config discovery fully verified with logging [Entry: b38786de-670e-489f-9666-5ee269e689eb]
   - **Why:** Confirm diagnostic output shows the folder scan in the extension output channel.
   - **How:** User verified 3 folders scanned (App ✗, Test ✗, TelemetryAnalysis ✓) in real multiroot workspace. Discovery runs multiple times during activation (cosmetic, not functional).
+- **2026-02-26** — Released MCP v3.1.0 and Extension v3.1.0 [Entry: 9a9af79b-67a4-4220-ada2-824fe10d21bc]
+  - **Why:** User requested release of all unreleased changes with updated CHANGELOGs.
+  - **How:** Updated both CHANGELOGs, bumped versions to 3.1.0, committed, tagged (mcp-v3.1.0, v3.1.0), pushed. MCP: Agentic Monitoring. Extension: Multiroot workspace support + Agent Monitoring Setup wizard.
+- **2026-02-26** — Install Agents uses config workspace [Entry: f86afc7a-93bb-4f31-93d2-f780d3fc900d]
+  - **Why:** In multiroot workspaces, agents should be installed in the workspace folder where .bctb-config.json lives, not always the first folder.
+  - **How:** Replaced getWorkspacePath() with findConfigWorkspace(outputChannel) in installAgentsCommand, so agents are created in the same folder the MCP config is loaded from.

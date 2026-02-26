@@ -1498,9 +1498,17 @@ async function showCacheStatsCommand(): Promise<void> {
  */
 async function installAgentsCommand(): Promise<void> {
     try {
-        const workspacePath = getWorkspacePath();
-        if (!workspacePath) {
+        const configResult = findConfigWorkspace(outputChannel);
+        if (!configResult) {
             throw new Error('No workspace folder open');
+        }
+        const workspacePath = configResult.workspacePath;
+
+        outputChannel.appendLine(`[Install Agents] Installing agents in workspace: ${workspacePath}`);
+        if (configResult.configFilePath) {
+            outputChannel.appendLine(`[Install Agents] Config found at: ${configResult.configFilePath}`);
+        } else {
+            outputChannel.appendLine(`[Install Agents] No config file found — using first workspace folder`);
         }
 
         const agentDir = path.join(workspacePath, '.github', 'agents');
