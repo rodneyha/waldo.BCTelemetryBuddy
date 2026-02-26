@@ -17,6 +17,7 @@ import { ProfileManager } from './services/profileManager';
 import { showFirstRunNotification, startPeriodicUpdateChecks, checkForMCPUpdates } from './services/mcpInstaller';
 import { VSCodeAuthService } from './services/vscodeAuthService';
 import { buildMcpEnv } from './services/mcpEnvBuilder';
+import { findConfigWorkspace } from './services/workspaceFinder';
 import {
     VSCodeUsageTelemetry,
     TelemetryLevelFilter,
@@ -629,8 +630,9 @@ export function activate(context: vscode.ExtensionContext) {
 
             // Prepare environment variables for MCP server
             // Pass workspace path so MCP can find .bctb-config.json
-            // Always use the active workspace (where user is working)
-            const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+            // Loop through all workspace folders and use the first one that has a config file
+            // (supports multiroot workspaces where .bctb-config.json may not be in the first folder)
+            const workspacePath = findConfigWorkspace(outputChannel)?.workspacePath || '';
 
             // Check if using VS Code authentication
             // Only attempt authentication if we have valid configuration

@@ -1639,3 +1639,18 @@ Keep entries short and focused. This doc is your presentation backbone.
 - **2026-02-26** — Implemented Agent Monitoring Setup Wizard [Entry: 8f6e7996-a351-4f55-b984-25e8e6275c2e]
   - **Why:** User requested an 8-step webview wizard to set up autonomous agent monitoring (LLM config, agent templates, actions, defaults, pipeline, test run).
   - **How:** Created AgentMonitoringSetupProvider.ts (webview provider following SetupWizardProvider pattern), registered bctb.setupAgentMonitoring command in package.json, wired up in extension.ts, added 25 tests covering all message handlers/HTML content/lifecycle.
+- **2026-02-26** — Backward-compatibility check before release [Entry: 4bfedb7c-f8a5-4dc8-b046-a6f9e069965c]
+  - **Why:** User asked whether a release would break existing MCP functionality.
+  - **How:** Compared git diff against mcp-v3.0.2 tag, verified both builds (MCP 564 tests, extension 371 tests), confirmed all changes are additive.
+- **2026-02-26** — Multiroot workspace config discovery [Entry: 79ae3eee-1529-41a5-a363-de16e358b0b5]
+  - **Why:** In multiroot workspaces the extension always used workspaceFolders[0] which missed .bctb-config.json in other folders.
+  - **How:** Created findConfigWorkspace() utility that loops all workspace folders for .bctb-config.json; updated extension.ts, profileManager.ts, telemetryService.ts to use it.
+- **2026-02-26** — Multiroot workspace config discovery verified [Entry: 485817aa-1724-43b6-b0eb-575fe8880b10]
+  - **Why:** Confirm the findConfigWorkspace() loop works in a real multiroot workspace.
+  - **How:** User tested in multiroot workspace; MCP picked up .bctb-config.json from the correct non-first folder.
+- **2026-02-26** — Added diagnostic logging to findConfigWorkspace [Entry: 2629e028-a27d-4d5f-b9cd-ebf165045ef0]
+  - **Why:** The output channel showed no evidence of the multiroot folder scan.
+  - **How:** Added optional outputChannel parameter to findConfigWorkspace(); logs each folder checked with checkmark/cross, and which one was selected. Passed outputChannel at all call sites.
+- **2026-02-26** — Multiroot config discovery fully verified with logging [Entry: b38786de-670e-489f-9666-5ee269e689eb]
+  - **Why:** Confirm diagnostic output shows the folder scan in the extension output channel.
+  - **How:** User verified 3 folders scanned (App ✗, Test ✗, TelemetryAnalysis ✓) in real multiroot workspace. Discovery runs multiple times during activation (cosmetic, not functional).

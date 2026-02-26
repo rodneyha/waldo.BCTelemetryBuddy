@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { MCPConfig, ProfiledConfig, resolveProfileInheritance, expandEnvironmentVariables } from '@bctb/shared';
+import { findConfigWorkspace } from './workspaceFinder';
 
 /**
  * Manages profile switching and configuration for multi-customer setups
@@ -14,12 +15,12 @@ export class ProfileManager {
     constructor(outputChannel: vscode.OutputChannel) {
         this.outputChannel = outputChannel;
 
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
+        const found = findConfigWorkspace(this.outputChannel);
+        if (!found) {
             throw new Error('No workspace folder open');
         }
 
-        this.configFilePath = path.join(workspaceFolders[0].uri.fsPath, '.bctb-config.json');
+        this.configFilePath = found.configFilePath || path.join(found.workspacePath, '.bctb-config.json');
 
         // Load current profile from workspace settings
         const savedProfile = vscode.workspace.getConfiguration('bctb').get<string>('currentProfile');
@@ -122,8 +123,7 @@ export class ProfileManager {
      * Convert ProfiledConfig to MCPConfig (for single-profile mode)
      */
     private convertToMCPConfig(config: ProfiledConfig): MCPConfig {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        const workspacePath = workspaceFolders?.[0].uri.fsPath || '';
+        const workspacePath = findConfigWorkspace(this.outputChannel)?.workspacePath || '';
 
         return expandEnvironmentVariables({
             connectionName: config.connectionName || 'Default',

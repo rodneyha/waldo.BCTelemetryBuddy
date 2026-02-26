@@ -13,6 +13,7 @@ import {
     expandEnvironmentVariables
 } from '@bctb/shared';
 import type { AuthResult } from '@bctb/shared';
+import { findConfigWorkspace } from './workspaceFinder';
 
 /**
  * Query result for extension consumption
@@ -76,17 +77,16 @@ export class TelemetryService {
      * Load configuration from .bctb-config.json file (supports multi-profile)
      */
     private loadConfig(): MCPConfig {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
+        const found = findConfigWorkspace(this.outputChannel);
+        if (!found) {
             throw new Error('No workspace folder open');
         }
 
-        const workspacePath = workspaceFolders[0].uri.fsPath;
-        const configPath = path.join(workspacePath, '.bctb-config.json');
+        const workspacePath = found.workspacePath;
 
-        // Check if .bctb-config.json exists
-        if (fs.existsSync(configPath)) {
-            return this.loadFromConfigFile(configPath, workspacePath);
+        // Use the config file discovered by findConfigWorkspace (loops all workspace folders)
+        if (found.configFilePath) {
+            return this.loadFromConfigFile(found.configFilePath, workspacePath);
         }
 
         // Fallback to VSCode settings (backward compatibility)

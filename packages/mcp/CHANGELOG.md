@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-02-26
+
 ### Added
 - **Agentic Autonomous Telemetry Monitoring** (`src/agent/`) — complete implementation of the autonomous monitoring runtime described in `Instructions/4. Agentic Monitoring/Design.md`
   - `AgentRuntime` (`runtime.ts`): ReAct loop that drives agents through LLM reasoning + tool calls

@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.2] - 2026-02-24
+## [3.1.0] - 2026-02-26
+
+### Added
+- **Multiroot Workspace Support**: Extension now searches all workspace folders for `.bctb-config.json` instead of only the first one. In multiroot workspaces the config can live in any folder — the first match is used, with fallback to the first folder.
+  - New `workspaceFinder.ts` utility with `findConfigWorkspace()` function and 9 unit tests
+  - Diagnostic logging in the Output channel shows which folders were scanned (`✓`/`✗`) and which config was selected
+  - Updated `extension.ts`, `profileManager.ts`, and `telemetryService.ts` to use the new discovery logic
+- **Setup Agent Monitoring Command**: New command "BC Telemetry Buddy: Setup Agent Monitoring" with a guided webview wizard (`AgentMonitoringSetupProvider`) to configure autonomous telemetry monitoring agents. Includes 477-line test suite.
 
 ### Fixed
 - **CI build failure (TS2322)**: Changed `buildMcpEnv()` return type from `McpEnvVars` (with `string | undefined` index signature) to `Record<string, string>` to match VS Code's `McpStdioServerDefinition.env` type requirement.

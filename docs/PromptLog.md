@@ -2814,3 +2814,23 @@ Change instructions an business logic to do this."
 > "Continue implementation of Agent Monitoring Setup Wizard (8-step webview). Create AgentMonitoringSetupProvider.ts, wire up in extension.ts, build, add 25 tests."
 
 ---
+### Entry ID: 4bfedb7c-f8a5-4dc8-b046-a6f9e069965c — 2026-02-26 13:28
+> "If we release this - will the MCP still work as the previous release?"
+
+---
+### Entry ID: 79ae3eee-1529-41a5-a363-de16e358b0b5 — 2026-02-26 13:44
+> "Can you change that a little bit by looping the workspaces until the first config file you find?"
+
+---
+### Entry ID: 485817aa-1724-43b6-b0eb-575fe8880b10 — 2026-02-26 13:58
+> "User tested multiroot workspace config discovery in real multiroot workspace — MCP server successfully found .bctb-config.json in the correct (non-first) workspace folder, loaded 'iFacto Customers' connection, authenticated via Azure CLI, discovered 12 tools."
+
+---
+### Entry ID: 2629e028-a27d-4d5f-b9cd-ebf165045ef0 — 2026-02-26 14:01
+> "but the output doesn't show the loop, does it?"
+
+---
+### Entry ID: b38786de-670e-489f-9666-5ee269e689eb — 2026-02-26 14:04
+> "User confirmed Config Discovery logging works in multiroot workspace — 3 folders scanned, config found in third folder (TelemetryAnalysis). Noted it scans 6 times during activation."
+
+---
